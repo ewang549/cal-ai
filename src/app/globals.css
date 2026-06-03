@@ -1,26 +1,147 @@
 @import "tailwindcss";
 
+@theme {
+  --color-cream: #f3eee4;
+  --color-cream-deep: #ece5d6;
+  --color-ink: #1a1612;
+  --color-ink-soft: #4a423a;
+  --color-muted: #8a7f72;
+  --color-rule: #d9d0bf;
+  --color-accent: #c84b1a;
+  --color-accent-soft: #e08a5a;
+  --color-surface: #fbf8f1;
+  --color-ink-deep: #110d09;
+
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-instrument-serif), "Times New Roman", serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  /* subtle paper texture */
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(200, 75, 26, 0.05), transparent 40%),
+    radial-gradient(circle at 88% 82%, rgba(26, 22, 18, 0.04), transparent 45%);
+}
+
+/* hairline rule used as decorative editorial accent */
+.editorial-rule {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    var(--color-rule) 20%,
+    var(--color-rule) 80%,
+    transparent
+  );
+}
+
+/* === entrance choreography === */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawline {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes type {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+/* utility classes for staged reveal */
+.reveal {
+  opacity: 0;
+  animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+.fade {
+  opacity: 0;
+  animation: fadein 1.4s ease-out forwards;
+}
+
+.draw {
+  transform-origin: left;
+  transform: scaleX(0);
+  animation: drawline 1.2s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+.typing {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  animation: type 2s steps(40, end) forwards;
+  vertical-align: bottom;
+}
+
+.caret::after {
+  content: "▍";
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--color-accent);
+  animation: blink 1s steps(1, end) infinite;
+}
+
+.pulse {
+  animation: pulse-dot 1.6s ease-in-out infinite;
 }
