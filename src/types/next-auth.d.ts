@@ -11,6 +11,8 @@ import "next-auth/jwt";
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
+    /** Present when refreshing the access_token failed; UI should re-sign-in. */
+    error?: string;
   }
 }
 
@@ -19,5 +21,6 @@ declare module "next-auth/jwt" {
     accessToken?: string;
     refreshToken?: string;
     expiresAt?: number;
+    error?: string;
   }
 }
