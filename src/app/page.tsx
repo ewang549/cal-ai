@@ -88,7 +88,7 @@ function HowItWorks() {
       id="how"
       className="relative border-t border-rule/40 bg-cream-deep/40"
     >
-      <div className="mx-auto max-w-6xl px-6 py-24 sm:px-10 sm:py-32">
+      <div className="mx-auto max-w-6xl px-6 py-10 sm:px-10 sm:py-14">
         <div className="mx-auto max-w-2xl text-center">
           <div className="font-mono text-xs tracking-[0.22em] uppercase text-accent">
             How it works
@@ -148,7 +148,7 @@ const features = [
 function Features() {
   return (
     <section id="features" className="relative border-t border-rule/40">
-      <div className="mx-auto max-w-6xl px-6 py-24 sm:px-10 sm:py-32">
+      <div className="mx-auto max-w-6xl px-6 py-10 sm:px-10 sm:py-14">
         <div className="mx-auto max-w-2xl text-center">
           <div className="font-mono text-xs tracking-[0.22em] uppercase text-accent">
             What you get

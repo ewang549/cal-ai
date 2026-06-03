@@ -18,9 +18,9 @@ export function Vision() {
   return (
     <section
       ref={ref}
-      className="relative isolate flex h-[220vh] w-full flex-col items-center overflow-hidden border-t border-rule/40 bg-cream px-6 sm:px-10"
+      className="relative isolate flex h-[110vh] w-full flex-col items-center overflow-hidden border-t border-rule/40 bg-cream px-6 sm:px-10"
     >
-      <div className="sticky top-[18vh] mt-[18vh] flex w-full max-w-5xl flex-col items-center text-center">
+      <div className="sticky top-[8vh] mt-[8vh] flex w-full max-w-5xl flex-col items-center text-center">
         <div className="font-mono text-xs tracking-[0.22em] uppercase text-accent">
           Why Cal AI
         </div>
