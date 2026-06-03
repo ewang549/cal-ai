@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -6,10 +7,12 @@ import {
   DashboardView,
 } from "@/components/dashboard/dashboard-header";
 import { Assistant } from "@/components/dashboard/assistant";
+import { DeadlineNudge } from "@/components/dashboard/deadline-nudge";
 import { ErrorCard } from "@/components/dashboard/error-card";
 import { MonthView } from "@/components/dashboard/month-view";
 import { Nav } from "@/components/landing/nav";
 import { WeekListView } from "@/components/dashboard/week-view";
+import { findAtRiskDeadlines } from "@/lib/calendar-tools";
 import {
   CalEvent,
   endOfMonthGrid,
@@ -55,6 +58,24 @@ export default async function DashboardPage({
     error = e instanceof Error ? e.message : "Couldn't reach Google Calendar.";
   }
 
+  // Independently fetch the next 72h to detect at-risk deadlines, regardless
+  // of which view the user is on. (View range might not include today.)
+  let atRisk: ReturnType<typeof findAtRiskDeadlines> = [];
+  if (!error) {
+    try {
+      const now = new Date();
+      const horizon = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+      const nearby = await fetchEventsForRange(
+        session.accessToken,
+        now,
+        horizon,
+      );
+      atRisk = findAtRiskDeadlines(nearby, 72);
+    } catch {
+      // best-effort; no banner if it fails
+    }
+  }
+
   return (
     <div className="min-h-screen bg-cream text-ink">
       <Nav />
@@ -67,6 +88,8 @@ export default async function DashboardPage({
           error={error}
         />
 
+        {!error && <DeadlineNudge deadlines={atRisk} />}
+
         {error ? (
           <ErrorCard error={error} />
         ) : view === "month" ? (
@@ -76,8 +99,11 @@ export default async function DashboardPage({
         )}
       </main>
 
-      {/* Conversational assistant pinned to the bottom of the viewport */}
-      <Assistant />
+      {/* Conversational assistant pinned to the bottom of the viewport.
+          Wrapped in Suspense because it reads URL search params (?prompt=…). */}
+      <Suspense fallback={null}>
+        <Assistant />
+      </Suspense>
     </div>
   );
 }

@@ -145,3 +145,30 @@ body {
 .pulse {
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
+
+/* Respect users who prefer reduced motion.
+   Cuts all animation/transition durations to ~instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Accessible focus rings (Tailwind default focus-visible is faint).
+   This bumps it up for keyboard users on any focusable element. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+/* Buttons already have rounded shapes; let their own ring style take over. */
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-cream), 0 0 0 4px var(--color-accent);
+}

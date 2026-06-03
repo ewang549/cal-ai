@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import {
   findFreeSlotsTool,
   listEventsTool,
+  planStudyBlocks,
 } from "@/lib/calendar-tools";
 import {
   eventSchema,
@@ -40,6 +41,7 @@ const WRITE_TOOL_NAMES = new Set([
   "create_event",
   "update_event",
   "delete_event",
+  "schedule_study_blocks",
 ]);
 
 export async function POST(req: Request) {
@@ -180,6 +182,24 @@ STYLE
     }
 
     if (writeProposal) {
+      // schedule_study_blocks is async (needs to fetch free slots first)
+      if (writeProposal.name === "schedule_study_blocks") {
+        const action = await buildStudyBlocksAction(
+          writeProposal,
+          session.accessToken,
+          tz,
+        );
+        if (!action) {
+          return NextResponse.json({
+            message:
+              text ||
+              "I couldn't find enough open time before that deadline. Try a longer window or fewer total hours.",
+            pendingAction: null,
+          });
+        }
+        return NextResponse.json({ message: text, pendingAction: action });
+      }
+
       const action = buildActionFromProposal(writeProposal, upcoming);
       if (!action) {
         return NextResponse.json({
@@ -323,6 +343,43 @@ const ALL_TOOLS: Anthropic.Messages.Tool[] = [
     },
   },
   {
+    name: "schedule_study_blocks",
+    description:
+      "Propose multiple study/work blocks distributed across the user's free time before a deadline. Use this when the user says something like 'I need 6 hours to study for my exam Friday' or 'schedule 3 hours of paper writing this week'. NEVER use create_event for multi-session tasks — use this instead.",
+    input_schema: {
+      type: "object",
+      properties: {
+        taskTitle: {
+          type: "string",
+          description:
+            "Short label that'll appear on each block (e.g. 'CS101 Final · Study').",
+        },
+        totalMinutes: {
+          type: "integer",
+          description: "Total minutes of work needed across all blocks.",
+        },
+        deadline: {
+          type: "string",
+          description:
+            "LOCAL ISO 8601 deadline (YYYY-MM-DDTHH:MM:SS). No work scheduled after this.",
+        },
+        blockMinutes: {
+          type: "integer",
+          description: "Preferred block size in minutes. Default 90.",
+        },
+        preferredHourStart: {
+          type: "integer",
+          description: "Earliest hour to schedule (0-23). Default 9.",
+        },
+        preferredHourEnd: {
+          type: "integer",
+          description: "Latest hour to schedule (0-23). Default 21.",
+        },
+      },
+      required: ["taskTitle", "totalMinutes", "deadline"],
+    },
+  },
+  {
     name: "ask_clarification",
     description:
       "Use when the user's request is missing required info (specific time, specific date) OR when multiple events could match an update/delete request.",
@@ -365,6 +422,51 @@ async function executeReadTool(
 }
 
 /* ─── action proposal builders ─── */
+
+async function buildStudyBlocksAction(
+  tu: Anthropic.Messages.ToolUseBlock,
+  accessToken: string,
+  tz: string,
+) {
+  const input = tu.input as {
+    taskTitle?: string;
+    totalMinutes?: number;
+    deadline?: string;
+    blockMinutes?: number;
+    preferredHourStart?: number;
+    preferredHourEnd?: number;
+  };
+  if (!input.taskTitle || !input.totalMinutes || !input.deadline) return null;
+
+  try {
+    const { blocks, scheduledMinutes, totalMinutes } = await planStudyBlocks({
+      taskTitle: input.taskTitle,
+      totalMinutes: input.totalMinutes,
+      deadline: input.deadline,
+      blockMinutes: input.blockMinutes,
+      preferredHourStart: input.preferredHourStart,
+      preferredHourEnd: input.preferredHourEnd,
+      accessToken,
+      tz,
+    });
+    if (blocks.length === 0) return null;
+    return {
+      action: "create_many" as const,
+      groupTitle: input.taskTitle,
+      totalMinutes,
+      scheduledMinutes,
+      events: blocks.map((b) => ({
+        title: input.taskTitle!,
+        start: b.start,
+        end: b.end,
+        location: null,
+        description: null,
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
 
 function buildActionFromProposal(
   tu: Anthropic.Messages.ToolUseBlock,

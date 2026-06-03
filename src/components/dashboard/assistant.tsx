@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
+  Calendar,
   Check,
   RotateCw,
   Sparkles,
@@ -14,13 +15,14 @@ import {
 import { Button } from "@/components/ui/button";
 import type {
   CreateAction,
+  CreateManyAction,
   DeleteAction,
   UpdateAction,
 } from "@/lib/event-schema";
 
 /* ─── types ─── */
 
-type Action = CreateAction | UpdateAction | DeleteAction;
+type Action = CreateAction | CreateManyAction | UpdateAction | DeleteAction;
 
 type Message = {
   id: string;
@@ -57,11 +59,14 @@ function newId() {
 
 export function Assistant() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const handledPromptRef = useRef<string | null>(null);
 
   const tz =
     typeof window !== "undefined"
@@ -74,6 +79,18 @@ export function Assistant() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, busy]);
+
+  // Pre-fill from URL ?prompt=... so deep links (e.g. nudge banners)
+  // can drop a draft message into the input without auto-sending.
+  useEffect(() => {
+    const prompt = searchParams.get("prompt");
+    if (prompt && handledPromptRef.current !== prompt) {
+      handledPromptRef.current = prompt;
+      setInput(prompt);
+      // Focus the input so the user can hit Go immediately.
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [searchParams]);
 
   async function send(text: string) {
     if (!text.trim() || busy) return;
@@ -255,8 +272,9 @@ export function Assistant() {
           }}
           className="flex items-center gap-2 rounded-full border border-rule bg-surface/95 p-1.5 pl-4 shadow-[0_24px_60px_-20px_rgba(26,22,18,0.35)] backdrop-blur-xl"
         >
-          <Sparkles className="size-4 shrink-0 text-accent" />
+          <Sparkles className="size-4 shrink-0 text-accent" aria-hidden />
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -296,6 +314,12 @@ function endpointFor(
       body: { ...action.event, timezone: tz },
     };
   }
+  if (action.action === "create_many") {
+    return {
+      endpoint: "/api/events/create-batch",
+      body: { events: action.events, timezone: tz },
+    };
+  }
   if (action.action === "update") {
     return {
       endpoint: "/api/events/update",
@@ -315,6 +339,8 @@ function endpointFor(
 function summaryFor(action: Action): string {
   if (action.action === "create")
     return `Added "${action.event.title}" to your calendar.`;
+  if (action.action === "create_many")
+    return `Added ${action.events.length} blocks for "${action.groupTitle}".`;
   if (action.action === "update") return `Updated "${action.eventTitle}".`;
   return `Cancelled "${action.eventTitle}".`;
 }
@@ -413,6 +439,7 @@ function CardHeader({
 }) {
   const labels = {
     create: "Proposed event",
+    create_many: "Proposed study blocks",
     update: "Proposed change",
     delete: "Cancel event?",
   };
@@ -456,6 +483,9 @@ function BodyForAction({
             location={action.event.location ?? undefined}
             description={action.event.description ?? undefined}
           />
+        )}
+        {action.action === "create_many" && (
+          <ManyBlocksList action={action} />
         )}
         {action.action === "update" && (
           <div className="grid grid-cols-1 gap-2.5 px-3.5 py-3 sm:grid-cols-2">
@@ -572,6 +602,70 @@ function DiffSide({
   );
 }
 
+function ManyBlocksList({ action }: { action: CreateManyAction }) {
+  const dayShortFmt = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const tFmt = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const totalMin = action.totalMinutes ?? 0;
+  const schedMin = action.scheduledMinutes ?? 0;
+  const shortBy = totalMin && schedMin && totalMin - schedMin > 0
+    ? totalMin - schedMin
+    : 0;
+  return (
+    <div className="flex flex-col gap-2 px-3.5 py-3">
+      <div className="flex items-center justify-between">
+        <div className="font-display text-lg tracking-tight text-ink">
+          {action.groupTitle}
+        </div>
+        <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted">
+          {action.events.length}{" "}
+          {action.events.length === 1 ? "block" : "blocks"}
+          {schedMin > 0 && ` · ${fmtMin(schedMin)}`}
+        </div>
+      </div>
+      {shortBy > 0 && (
+        <div className="rounded-md bg-amber-100/60 px-2.5 py-1.5 text-[12px] text-amber-900">
+          Could only fit {fmtMin(schedMin)} of {fmtMin(totalMin)} requested.
+          Add more days or shorten the deadline.
+        </div>
+      )}
+      <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto pt-1">
+        {action.events.map((ev, i) => {
+          const s = new Date(ev.start);
+          const e = new Date(ev.end);
+          return (
+            <li
+              key={i}
+              className="flex items-center gap-2 rounded-md border border-rule/60 bg-cream px-2.5 py-1.5"
+            >
+              <Calendar className="size-3.5 shrink-0 text-accent" />
+              <span className="font-mono text-[10px] tracking-wider uppercase text-muted">
+                {dayShortFmt.format(s)}
+              </span>
+              <span className="font-mono text-[11px] text-ink-soft">
+                {tFmt.format(s)}–{tFmt.format(e)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function fmtMin(mins: number): string {
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
 function CardActions({
   action,
   busy,
@@ -584,6 +678,7 @@ function CardActions({
   onReject: () => void;
 }) {
   const isDelete = action.action === "delete";
+  const isMany = action.action === "create_many";
   return (
     <div className="flex flex-wrap items-center justify-end gap-2 border-t border-rule bg-cream-deep/30 px-3.5 py-2.5">
       <Button
@@ -602,6 +697,11 @@ function CardActions({
           <>
             <Trash2 className="mr-1.5 size-3.5" strokeWidth={2.25} />
             Yes, cancel it
+          </>
+        ) : isMany ? (
+          <>
+            <Check className="mr-1.5 size-3.5" strokeWidth={2.25} />
+            Add all blocks
           </>
         ) : (
           <>

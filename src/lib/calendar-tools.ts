@@ -113,3 +113,187 @@ function toLocalIso(d: Date, tz: string): string {
   const s = d.toLocaleString("sv-SE", { timeZone: tz });
   return s.replace(" ", "T");
 }
+
+/**
+ * Build a set of study/work blocks for a task with a total time budget,
+ * distributed across the user's free time before a deadline. Caps blocks
+ * to preferred hours (8am–9pm by default) and respects a max-per-day rule
+ * to avoid suggesting 6 hours of work back-to-back.
+ */
+export async function planStudyBlocks(args: {
+  taskTitle: string;
+  totalMinutes: number;
+  deadline: string; // LOCAL ISO
+  blockMinutes?: number;
+  preferredHourStart?: number;
+  preferredHourEnd?: number;
+  maxBlocksPerDay?: number;
+  accessToken: string;
+  tz: string;
+  nowOverride?: Date;
+}): Promise<{
+  blocks: Array<{ start: string; end: string }>;
+  scheduledMinutes: number;
+  totalMinutes: number;
+}> {
+  const blockMinutes = clampInt(args.blockMinutes ?? 90, 30, 180);
+  const startHour = clampInt(args.preferredHourStart ?? 9, 0, 23);
+  const endHour = clampInt(args.preferredHourEnd ?? 21, startHour + 1, 24);
+  const maxBlocksPerDay = args.maxBlocksPerDay ?? 2;
+
+  const now = args.nowOverride ?? new Date();
+  const deadline = new Date(`${args.deadline}Z`); // treat as UTC-ish, we re-derive below
+  // Better: convert deadline (local) → UTC properly
+  const deadlineUtc = new Date(localToUtcIso(args.deadline, args.tz));
+
+  // Fetch free slots from now → deadline.
+  const nowLocal = toLocalIso(now, args.tz);
+  const slots = await findFreeSlotsTool({
+    rangeStart: nowLocal,
+    rangeEnd: args.deadline,
+    minDurationMinutes: 30,
+    accessToken: args.accessToken,
+    tz: args.tz,
+  });
+
+  const blocks: Array<{ start: string; end: string }> = [];
+  const blocksOnDay = new Map<string, number>(); // YYYY-MM-DD -> count
+  let remaining = args.totalMinutes;
+
+  for (const slot of slots) {
+    if (remaining <= 0) break;
+    const slotStartUtc = new Date(localToUtcIso(slot.start, args.tz));
+    const slotEndUtc = new Date(localToUtcIso(slot.end, args.tz));
+    if (slotStartUtc >= deadlineUtc) break;
+
+    // Walk through the slot in blockMinutes chunks within preferred hours.
+    let cursor = new Date(slotStartUtc);
+    const slotCeiling =
+      slotEndUtc < deadlineUtc ? slotEndUtc : deadlineUtc;
+
+    while (cursor < slotCeiling && remaining > 0) {
+      const localCursor = new Date(
+        cursor.toLocaleString("sv-SE", { timeZone: args.tz }).replace(" ", "T"),
+      );
+      const hour = localCursor.getHours();
+      const dayKey = localCursor.toISOString().slice(0, 10);
+
+      if (hour < startHour) {
+        // jump to startHour today
+        const next = new Date(localCursor);
+        next.setHours(startHour, 0, 0, 0);
+        const nextUtc = new Date(localToUtcIso(toLocalIso(next, args.tz), args.tz));
+        cursor = nextUtc;
+        continue;
+      }
+      if (hour >= endHour) {
+        // jump to startHour next day
+        const next = new Date(localCursor);
+        next.setDate(next.getDate() + 1);
+        next.setHours(startHour, 0, 0, 0);
+        const nextUtc = new Date(localToUtcIso(toLocalIso(next, args.tz), args.tz));
+        cursor = nextUtc;
+        continue;
+      }
+
+      const used = blocksOnDay.get(dayKey) ?? 0;
+      if (used >= maxBlocksPerDay) {
+        // jump to startHour next day
+        const next = new Date(localCursor);
+        next.setDate(next.getDate() + 1);
+        next.setHours(startHour, 0, 0, 0);
+        cursor = new Date(localToUtcIso(toLocalIso(next, args.tz), args.tz));
+        continue;
+      }
+
+      const allocate = Math.min(blockMinutes, remaining);
+      const blockEnd = new Date(cursor.getTime() + allocate * 60_000);
+      if (blockEnd > slotCeiling) break;
+      // Also keep within preferred end hour
+      const blockEndLocal = new Date(
+        blockEnd.toLocaleString("sv-SE", { timeZone: args.tz }).replace(" ", "T"),
+      );
+      const endHourFractional =
+        blockEndLocal.getHours() + blockEndLocal.getMinutes() / 60;
+      if (endHourFractional > endHour) break;
+
+      blocks.push({
+        start: toLocalIso(cursor, args.tz),
+        end: toLocalIso(blockEnd, args.tz),
+      });
+      blocksOnDay.set(dayKey, used + 1);
+      remaining -= allocate;
+      cursor = blockEnd;
+    }
+  }
+
+  return {
+    blocks,
+    scheduledMinutes: args.totalMinutes - remaining,
+    totalMinutes: args.totalMinutes,
+  };
+}
+
+function clampInt(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.floor(v)));
+}
+
+// Avoid circular import — re-implement what we need
+function localToUtcIso(localIso: string, tz: string): string {
+  const guess = new Date(`${localIso}Z`);
+  const wall = guess.toLocaleString("sv-SE", { timeZone: tz });
+  const guessAsTz = new Date(`${wall.replace(" ", "T")}Z`);
+  const offsetMs = guess.getTime() - guessAsTz.getTime();
+  return new Date(guess.getTime() + offsetMs).toISOString();
+}
+
+/* ─── nudges: detect at-risk deadlines ─── */
+
+import type { CalEvent as _CalEvent } from "@/lib/google-calendar";
+
+export type AtRiskDeadline = {
+  id: string;
+  title: string;
+  startIso: string; // LOCAL ISO
+  isAllDay: boolean;
+};
+
+const DEADLINE_KEYWORDS =
+  /\b(due|exam|quiz|midterm|final|finals|paper|project|homework|assignment|deadline|test|presentation)\b/i;
+
+/**
+ * From a list of upcoming events, return those that look like deadlines
+ * within the next `withinHours` hours. Heuristic: title contains a
+ * deadline keyword OR is bracketed (typical syllabus import format).
+ */
+export function findAtRiskDeadlines(
+  events: _CalEvent[],
+  withinHours = 72,
+): AtRiskDeadline[] {
+  const now = new Date();
+  const horizon = new Date(now.getTime() + withinHours * 60 * 60 * 1000);
+
+  const at: AtRiskDeadline[] = [];
+  for (const ev of events) {
+    const title = ev.summary ?? "";
+    const isDeadline =
+      DEADLINE_KEYWORDS.test(title) ||
+      title.trimStart().startsWith("[");
+    if (!isDeadline) continue;
+
+    const iso = ev.start.dateTime ?? ev.start.date;
+    if (!iso) continue;
+    const start = new Date(iso);
+    if (start <= now || start > horizon) continue;
+
+    at.push({
+      id: ev.id,
+      title,
+      startIso: iso,
+      isAllDay: Boolean(ev.start.date && !ev.start.dateTime),
+    });
+  }
+  // Sort by date ascending
+  at.sort((a, b) => a.startIso.localeCompare(b.startIso));
+  return at;
+}

@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, LayoutGrid, List } from "lucide-react";
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  List,
+} from "lucide-react";
 
 import {
   addDays,
@@ -70,6 +76,13 @@ export function DashboardHeader({
         </div>
 
         <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+          <Link
+            href="/dashboard/syllabus"
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-accent/40 bg-accent/[0.06] px-4 text-sm font-medium text-accent transition-colors duration-200 hover:bg-accent/[0.12]"
+          >
+            <BookOpen className="size-3.5" />
+            Import syllabus
+          </Link>
           <NavGroup
             view={view}
             prev={prevAnchor}

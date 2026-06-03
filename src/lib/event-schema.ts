@@ -60,6 +60,14 @@ export const createActionSchema = z.object({
   event: eventSchema,
 });
 
+export const createManyActionSchema = z.object({
+  action: z.literal("create_many"),
+  groupTitle: z.string(),
+  events: z.array(eventSchema),
+  totalMinutes: z.number().optional(),
+  scheduledMinutes: z.number().optional(),
+});
+
 export const updateActionSchema = z.object({
   action: z.literal("update"),
   eventId: z.string().min(1),
@@ -91,6 +99,7 @@ export const clarifyActionSchema = z.object({
 
 export const parseResponseSchema = z.discriminatedUnion("action", [
   createActionSchema,
+  createManyActionSchema,
   updateActionSchema,
   deleteActionSchema,
   clarifyActionSchema,
@@ -98,6 +107,7 @@ export const parseResponseSchema = z.discriminatedUnion("action", [
 
 export type ParseResponse = z.infer<typeof parseResponseSchema>;
 export type CreateAction = z.infer<typeof createActionSchema>;
+export type CreateManyAction = z.infer<typeof createManyActionSchema>;
 export type UpdateAction = z.infer<typeof updateActionSchema>;
 export type DeleteAction = z.infer<typeof deleteActionSchema>;
 export type ClarifyAction = z.infer<typeof clarifyActionSchema>;
