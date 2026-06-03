@@ -58,7 +58,7 @@ export default async function DashboardPage({
   return (
     <div className="min-h-screen bg-cream text-ink">
       <Nav />
-      <main className="mx-auto max-w-5xl px-6 py-12 sm:px-10 sm:py-16">
+      <main className="mx-auto max-w-5xl px-6 pt-12 pb-40 sm:px-10 sm:pt-16">
         <DashboardHeader
           view={view}
           anchor={anchor}
@@ -66,8 +66,6 @@ export default async function DashboardPage({
           eventCount={events.length}
           error={error}
         />
-
-        <QuickAdd />
 
         {error ? (
           <ErrorCard error={error} />
@@ -77,6 +75,9 @@ export default async function DashboardPage({
           <WeekListView events={events} error={null} anchor={anchor} />
         )}
       </main>
+
+      {/* Floating composer pinned to the bottom of the viewport */}
+      <QuickAdd />
     </div>
   );
 }

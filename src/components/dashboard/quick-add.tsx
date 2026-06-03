@@ -138,88 +138,77 @@ export function QuickAdd() {
     state.kind !== "clarifying";
 
   return (
-    <section className="mb-12 rounded-2xl border border-rule bg-surface p-5 shadow-[0_20px_60px_-30px_rgba(26,22,18,0.18)] sm:p-6">
-      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] tracking-[0.18em] uppercase text-muted">
-        <Sparkles className="size-3.5 text-accent" />
-        Add · move · cancel — by typing
-      </div>
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-4 sm:pb-6">
+      <div className="pointer-events-auto mx-auto flex max-w-3xl flex-col gap-3">
+        {/* Floating panels — they stack above the input bar */}
+        {state.kind === "clarifying" && (
+          <ClarifyCard
+            question={state.question}
+            originalText={state.originalText}
+            value={clarification}
+            onChange={setClarification}
+            onSubmit={handleClarify}
+            onCancel={resetToIdle}
+            inputRef={clarifyInputRef}
+          />
+        )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-2 sm:flex-row sm:items-center"
-      >
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={isFormBusy || state.kind === "clarifying"}
-          placeholder="dentist next Tuesday 3pm   ·   move my 3pm to Friday   ·   cancel lunch Tuesday"
-          aria-label="Describe what to do, in plain English"
-          className="h-12 flex-1 rounded-xl border border-rule bg-cream px-4 text-[15px] text-ink placeholder-muted outline-none transition-colors duration-200 focus:border-accent disabled:opacity-60"
-        />
-        <Button
-          type="submit"
-          size="lg"
-          disabled={
-            !text.trim() || isFormBusy || state.kind === "clarifying"
-          }
-          className="group"
-        >
-          {state.kind === "parsing" ? "Parsing…" : "Go"}
-          {state.kind !== "parsing" && (
-            <ArrowUpRight className="ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          )}
-        </Button>
-      </form>
+        {(state.kind === "confirming" || state.kind === "executing") && (
+          <ActionCard
+            action={state.action}
+            busy={state.kind === "executing"}
+            onConfirm={() => handleConfirm(state.action)}
+            onCancel={resetToIdle}
+          />
+        )}
 
-      {state.kind === "clarifying" && (
-        <ClarifyCard
-          question={state.question}
-          originalText={state.originalText}
-          value={clarification}
-          onChange={setClarification}
-          onSubmit={handleClarify}
-          onCancel={resetToIdle}
-          inputRef={clarifyInputRef}
-        />
-      )}
-
-      {(state.kind === "confirming" || state.kind === "executing") && (
-        <ActionCard
-          action={state.action}
-          busy={state.kind === "executing"}
-          onConfirm={() => handleConfirm(state.action)}
-          onCancel={resetToIdle}
-        />
-      )}
-
-      {state.kind === "success" && (
-        <div className="mt-4 flex items-center gap-3 rounded-xl border border-rule bg-cream px-4 py-3">
-          <div className="flex size-7 items-center justify-center rounded-full bg-emerald-500 text-cream">
-            <Check className="size-4" strokeWidth={2.5} />
-          </div>
-          <div className="flex-1 text-[15px] text-ink">{state.message}</div>
-        </div>
-      )}
-
-      {state.kind === "error" && (
-        <div className="mt-4 flex items-start gap-3 rounded-xl border border-rule bg-cream px-4 py-3">
-          <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-cream">
-            <X className="size-4" strokeWidth={2.5} />
-          </div>
-          <div className="flex-1 text-[14px] text-ink-soft">
+        {state.kind === "success" && (
+          <Toast variant="success" onDismiss={resetToIdle}>
             {state.message}
-          </div>
-          <button
-            type="button"
-            onClick={resetToIdle}
-            className="font-mono text-[11px] tracking-wider uppercase text-muted underline-offset-4 hover:text-ink hover:underline"
+          </Toast>
+        )}
+
+        {state.kind === "error" && (
+          <Toast variant="error" onDismiss={resetToIdle}>
+            {state.message}
+          </Toast>
+        )}
+
+        {/* The always-visible input bar */}
+        <form
+          onSubmit={handleSubmit}
+          className="flex items-center gap-2 rounded-full border border-rule bg-surface/95 p-1.5 pl-4 shadow-[0_24px_60px_-20px_rgba(26,22,18,0.35)] backdrop-blur-xl"
+        >
+          <Sparkles className="size-4 shrink-0 text-accent" />
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={isFormBusy || state.kind === "clarifying"}
+            placeholder="add · move · cancel — by typing"
+            aria-label="Describe what to do, in plain English"
+            className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder-muted outline-none disabled:opacity-60"
+          />
+          <Button
+            type="submit"
+            size="default"
+            disabled={
+              !text.trim() || isFormBusy || state.kind === "clarifying"
+            }
+            className="group h-10"
           >
-            Dismiss
-          </button>
-        </div>
-      )}
-    </section>
+            {state.kind === "parsing" ? (
+              "Parsing…"
+            ) : (
+              <>
+                Go
+                <ArrowUpRight className="ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              </>
+            )}
+          </Button>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -245,12 +234,57 @@ function endpointFor(
       successMessage: `Updated “${action.eventTitle}”.`,
     };
   }
-  // delete
   return {
     endpoint: "/api/events/delete",
     body: { eventId: action.eventId },
     successMessage: `Cancelled “${action.eventTitle}”.`,
   };
+}
+
+/* ─────────────────────── Floating panel shell ─────────────────────── */
+
+function FloatingPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-rule bg-surface/97 shadow-[0_30px_80px_-25px_rgba(26,22,18,0.4)] backdrop-blur-xl">
+      {children}
+    </div>
+  );
+}
+
+function Toast({
+  variant,
+  children,
+  onDismiss,
+}: {
+  variant: "success" | "error";
+  children: React.ReactNode;
+  onDismiss: () => void;
+}) {
+  return (
+    <FloatingPanel>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div
+          className={`flex size-7 shrink-0 items-center justify-center rounded-full text-cream ${
+            variant === "success" ? "bg-emerald-500" : "bg-accent"
+          }`}
+        >
+          {variant === "success" ? (
+            <Check className="size-4" strokeWidth={2.5} />
+          ) : (
+            <X className="size-4" strokeWidth={2.5} />
+          )}
+        </div>
+        <div className="flex-1 text-[14px] text-ink">{children}</div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="font-mono text-[11px] tracking-wider uppercase text-muted underline-offset-4 hover:text-ink hover:underline"
+        >
+          Dismiss
+        </button>
+      </div>
+    </FloatingPanel>
+  );
 }
 
 /* ─────────────────────── Cards ─────────────────────── */
@@ -273,16 +307,13 @@ function ClarifyCard({
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   return (
-    <div className="mt-5 overflow-hidden rounded-xl border border-rule bg-cream">
-      <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
-        <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] uppercase text-accent">
-          <MessageCircleQuestion className="size-3.5" />
-          One more thing
-        </div>
-        <div className="font-mono text-[10px] tracking-wider uppercase text-muted">
-          Quick clarify
-        </div>
-      </div>
+    <FloatingPanel>
+      <CardHeader
+        eyebrow="One more thing"
+        eyebrowIcon={<MessageCircleQuestion className="size-3.5" />}
+        rightLabel="Quick clarify"
+        onClose={onCancel}
+      />
       <div className="px-5 py-4">
         <div className="mb-1 font-mono text-[11px] tracking-wider uppercase text-muted">
           You typed
@@ -302,18 +333,23 @@ function ClarifyCard({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="e.g. 3pm"
-            className="h-11 flex-1 rounded-xl border border-rule bg-surface px-4 text-[15px] text-ink placeholder-muted outline-none transition-colors duration-200 focus:border-accent"
+            className="h-11 flex-1 rounded-xl border border-rule bg-cream px-4 text-[15px] text-ink placeholder-muted outline-none transition-colors duration-200 focus:border-accent"
             aria-label="Clarification answer"
           />
           <Button type="submit" size="default" disabled={!value.trim()}>
             Try again
           </Button>
-          <Button type="button" size="default" variant="ghost" onClick={onCancel}>
+          <Button
+            type="button"
+            size="default"
+            variant="ghost"
+            onClick={onCancel}
+          >
             Cancel
           </Button>
         </form>
       </div>
-    </div>
+    </FloatingPanel>
   );
 }
 
@@ -330,18 +366,21 @@ function ActionCard({
 }) {
   if (action.action === "create") {
     return (
-      <CardShell
-        eyebrow="Here's what I understood"
-        rightLabel="Confirm to add"
-        accent="add"
-      >
-        <EventBlock
-          title={action.event.title}
-          start={action.event.start}
-          end={action.event.end}
-          location={action.event.location ?? undefined}
-          description={action.event.description ?? undefined}
+      <FloatingPanel>
+        <CardHeader
+          eyebrow="Here's what I understood"
+          rightLabel="Confirm to add"
+          onClose={onCancel}
         />
+        <BodyWithBar bar="bg-accent">
+          <EventBlock
+            title={action.event.title}
+            start={action.event.start}
+            end={action.event.end}
+            location={action.event.location ?? undefined}
+            description={action.event.description ?? undefined}
+          />
+        </BodyWithBar>
         <CardActions
           busy={busy}
           confirmLabel="Confirm & add"
@@ -349,34 +388,37 @@ function ActionCard({
           onConfirm={onConfirm}
           onCancel={onCancel}
         />
-      </CardShell>
+      </FloatingPanel>
     );
   }
 
   if (action.action === "update") {
     const updates = action.updates;
     return (
-      <CardShell
-        eyebrow={`Update “${action.eventTitle}”`}
-        rightLabel="Confirm to update"
-        accent="update"
-      >
-        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
-          <DiffSide
-            label="Before"
-            title={action.current.title}
-            start={action.current.start}
-            end={action.current.end}
-          />
-          <DiffSide
-            label="After"
-            title={updates.title ?? action.current.title}
-            start={updates.start ?? action.current.start}
-            end={updates.end ?? action.current.end}
-            location={updates.location ?? undefined}
-            description={updates.description ?? undefined}
-          />
-        </div>
+      <FloatingPanel>
+        <CardHeader
+          eyebrow={`Update “${action.eventTitle}”`}
+          rightLabel="Confirm to update"
+          onClose={onCancel}
+        />
+        <BodyWithBar bar="bg-ink">
+          <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
+            <DiffSide
+              label="Before"
+              title={action.current.title}
+              start={action.current.start}
+              end={action.current.end}
+            />
+            <DiffSide
+              label="After"
+              title={updates.title ?? action.current.title}
+              start={updates.start ?? action.current.start}
+              end={updates.end ?? action.current.end}
+              location={updates.location ?? undefined}
+              description={updates.description ?? undefined}
+            />
+          </div>
+        </BodyWithBar>
         <CardActions
           busy={busy}
           confirmLabel="Confirm & update"
@@ -384,66 +426,82 @@ function ActionCard({
           onConfirm={onConfirm}
           onCancel={onCancel}
         />
-      </CardShell>
+      </FloatingPanel>
     );
   }
 
   // delete
   return (
-    <CardShell
-      eyebrow={`Cancel “${action.eventTitle}”?`}
-      rightLabel="Destructive action"
-      accent="delete"
-    >
-      <EventBlock
-        title={action.current.title}
-        start={action.current.start}
-        end={action.current.end}
-        muted
+    <FloatingPanel>
+      <CardHeader
+        eyebrow={`Cancel “${action.eventTitle}”?`}
+        rightLabel="Destructive"
+        onClose={onCancel}
       />
+      <BodyWithBar bar="bg-accent">
+        <EventBlock
+          title={action.current.title}
+          start={action.current.start}
+          end={action.current.end}
+          muted
+        />
+      </BodyWithBar>
       <CardActions
         busy={busy}
         confirmLabel="Yes, cancel it"
         confirmIcon={<Trash2 className="mr-1.5 size-3.5" strokeWidth={2.25} />}
-        confirmVariant="default"
         onConfirm={onConfirm}
         onCancel={onCancel}
       />
-    </CardShell>
+    </FloatingPanel>
   );
 }
 
-function CardShell({
+function CardHeader({
   eyebrow,
+  eyebrowIcon,
   rightLabel,
-  accent,
-  children,
+  onClose,
 }: {
   eyebrow: string;
+  eyebrowIcon?: React.ReactNode;
   rightLabel: string;
-  accent: "add" | "update" | "delete";
-  children: React.ReactNode;
+  onClose: () => void;
 }) {
-  const barColor =
-    accent === "delete"
-      ? "bg-accent"
-      : accent === "update"
-        ? "bg-ink"
-        : "bg-accent";
   return (
-    <div className="mt-5 overflow-hidden rounded-xl border border-rule bg-cream">
-      <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
-        <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-accent">
-          {eyebrow}
-        </div>
+    <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
+      <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.22em] uppercase text-accent">
+        {eyebrowIcon}
+        {eyebrow}
+      </div>
+      <div className="flex items-center gap-3">
         <div className="font-mono text-[10px] tracking-wider uppercase text-muted">
           {rightLabel}
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex size-6 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
+        >
+          <X className="size-3.5" />
+        </button>
       </div>
-      <div className="flex items-stretch">
-        <div className={`w-1.5 ${barColor}`} />
-        <div className="flex-1">{children}</div>
-      </div>
+    </div>
+  );
+}
+
+function BodyWithBar({
+  bar,
+  children,
+}: {
+  bar: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-stretch">
+      <div className={`w-1.5 ${bar}`} />
+      <div className="flex-1">{children}</div>
     </div>
   );
 }
@@ -528,9 +586,7 @@ function DiffSide({
       <div className="font-mono text-xs text-ink-soft">
         {dayFmt.format(s)} · {timeFmt.format(s)} – {timeFmt.format(e)}
       </div>
-      {location && (
-        <div className="text-xs text-ink-soft">📍 {location}</div>
-      )}
+      {location && <div className="text-xs text-ink-soft">📍 {location}</div>}
       {description && (
         <div className="text-xs leading-relaxed text-ink-soft">
           {description}
@@ -544,19 +600,17 @@ function CardActions({
   busy,
   confirmLabel,
   confirmIcon,
-  confirmVariant = "default",
   onConfirm,
   onCancel,
 }: {
   busy: boolean;
   confirmLabel: string;
   confirmIcon: React.ReactNode;
-  confirmVariant?: "default" | "accent";
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-rule bg-surface px-4 py-3">
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-rule bg-cream-deep/40 px-4 py-3">
       <Button
         type="button"
         size="sm"
@@ -566,13 +620,7 @@ function CardActions({
       >
         Cancel
       </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant={confirmVariant}
-        onClick={onConfirm}
-        disabled={busy}
-      >
+      <Button type="button" size="sm" onClick={onConfirm} disabled={busy}>
         {busy ? (
           "Working…"
         ) : (
@@ -586,5 +634,4 @@ function CardActions({
   );
 }
 
-// Re-export ParsedEvent only so the existing import path keeps working if needed.
 export type { ParsedEvent };
