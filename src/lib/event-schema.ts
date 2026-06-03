@@ -1,33 +1,23 @@
 import { z } from "zod";
 
-/**
- * The contract we accept from Claude AND require for Google Calendar writes.
- *
- * Datetimes are local-time ISO strings (no trailing Z / timezone offset)
- * because the timezone is supplied alongside them and applied at write time
- * by the Google Calendar API. This avoids subtle off-by-an-hour bugs around
- * DST transitions.
- */
+/* ── shared building blocks ── */
+
+const LOCAL_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+
+const titleField = z.string().min(1, "Title is required").max(200);
+const dtField = z.string().regex(LOCAL_ISO, "Use YYYY-MM-DDTHH:MM[:SS]");
+const locField = z.string().max(500).nullable().optional();
+const descField = z.string().max(2000).nullable().optional();
+
+/* ── full event (for create) ── */
+
 export const eventSchema = z
   .object({
-    title: z
-      .string()
-      .min(1, "Title is required")
-      .max(200, "Title too long"),
-    start: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/,
-        "start must be ISO 8601 local time (YYYY-MM-DDTHH:MM[:SS])",
-      ),
-    end: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/,
-        "end must be ISO 8601 local time (YYYY-MM-DDTHH:MM[:SS])",
-      ),
-    location: z.string().max(500).nullable().optional(),
-    description: z.string().max(2000).nullable().optional(),
+    title: titleField,
+    start: dtField,
+    end: dtField,
+    location: locField,
+    description: descField,
   })
   .refine(
     (e) => new Date(e.end).getTime() > new Date(e.start).getTime(),
@@ -35,3 +25,79 @@ export const eventSchema = z
   );
 
 export type ParsedEvent = z.infer<typeof eventSchema>;
+
+/* ── partial updates ── */
+
+export const eventUpdatesSchema = z
+  .object({
+    title: titleField.optional(),
+    start: dtField.optional(),
+    end: dtField.optional(),
+    location: locField,
+    description: descField,
+  })
+  .refine(
+    (u) =>
+      !u.start ||
+      !u.end ||
+      new Date(u.end).getTime() > new Date(u.start).getTime(),
+    { message: "end must be after start", path: ["end"] },
+  )
+  .refine(
+    (u) =>
+      Object.values(u).some(
+        (v) => v !== undefined && v !== null && v !== "",
+      ),
+    { message: "At least one field must change" },
+  );
+
+export type EventUpdates = z.infer<typeof eventUpdatesSchema>;
+
+/* ── action payloads from the parser ── */
+
+export const createActionSchema = z.object({
+  action: z.literal("create"),
+  event: eventSchema,
+});
+
+export const updateActionSchema = z.object({
+  action: z.literal("update"),
+  eventId: z.string().min(1),
+  eventTitle: z.string(),
+  current: z.object({
+    title: z.string(),
+    start: z.string(),
+    end: z.string(),
+  }),
+  updates: eventUpdatesSchema,
+});
+
+export const deleteActionSchema = z.object({
+  action: z.literal("delete"),
+  eventId: z.string().min(1),
+  eventTitle: z.string(),
+  current: z.object({
+    title: z.string(),
+    start: z.string(),
+    end: z.string(),
+  }),
+});
+
+export const clarifyActionSchema = z.object({
+  action: z.literal("clarify"),
+  question: z.string(),
+  missing: z.array(z.string()).optional(),
+});
+
+export const parseResponseSchema = z.discriminatedUnion("action", [
+  createActionSchema,
+  updateActionSchema,
+  deleteActionSchema,
+  clarifyActionSchema,
+]);
+
+export type ParseResponse = z.infer<typeof parseResponseSchema>;
+export type CreateAction = z.infer<typeof createActionSchema>;
+export type UpdateAction = z.infer<typeof updateActionSchema>;
+export type DeleteAction = z.infer<typeof deleteActionSchema>;
+export type ClarifyAction = z.infer<typeof clarifyActionSchema>;

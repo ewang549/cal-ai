@@ -2,22 +2,29 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { eventSchema } from "@/lib/event-schema";
+import {
+  eventSchema,
+  eventUpdatesSchema,
+} from "@/lib/event-schema";
+import {
+  CalEvent,
+  fetchEventsForRange,
+  getEventEnd,
+  getEventStart,
+} from "@/lib/google-calendar";
 
 /**
  * POST /api/events/parse
  *
- * Body: { text, timezone }
+ * Routes a natural-language sentence to one of four actions:
+ *   - create        (the user wants a new event)
+ *   - update        (modify an existing event by id)
+ *   - delete        (cancel an existing event by id)
+ *   - clarify       (model needs more info)
  *
- * Returns either:
- *   { type: "event", event }                    — parsed and validated
- *   { type: "needs_clarification", question }   — Claude couldn't infer
- *                                                 a required field
- *
- * Two tools are exposed to Claude. The `create_event` tool requires all
- * key fields. The `ask_clarification` tool lets Claude bail out with a
- * follow-up question when the user's input is ambiguous — rather than
- * silently defaulting to noon and getting it wrong.
+ * To enable update / delete, we first fetch the user's upcoming events
+ * (next 4 weeks) and pass them as context so Claude can match the
+ * user's description to a concrete event id.
  */
 export async function POST(req: Request) {
   const session = await auth();
@@ -46,10 +53,31 @@ export async function POST(req: Request) {
     );
   }
 
+  // Pull upcoming events so the model can reference them by id.
+  const now = new Date();
+  const fourWeeksOut = new Date(now);
+  fourWeeksOut.setDate(fourWeeksOut.getDate() + 28);
+
+  let upcoming: CalEvent[] = [];
+  try {
+    upcoming = await fetchEventsForRange(
+      session.accessToken,
+      now,
+      fourWeeksOut,
+    );
+  } catch {
+    // Non-fatal: model just won't be able to update/delete; create still works.
+  }
+
+  const eventsContext = upcoming.length
+    ? upcoming
+        .slice(0, 50)
+        .map((ev) => formatEventForPrompt(ev, tz))
+        .join("\n")
+    : "(no upcoming events in the next 4 weeks)";
+
   const anthropic = new Anthropic({ apiKey });
 
-  const now = new Date();
-  const nowIso = now.toISOString();
   const nowInTz = now.toLocaleString("en-US", {
     timeZone: tz,
     weekday: "long",
@@ -63,78 +91,104 @@ export async function POST(req: Request) {
   try {
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
+      max_tokens: 768,
       tools: [
         {
           name: "create_event",
           description:
-            "Use this ONLY when you have all of: a clear title, a specific resolvable date, and a specific clock time. Never invent a default time or date.",
+            "Use when the user wants to add a NEW event AND you have a clear title, a specific date, and a specific clock time.",
           input_schema: {
             type: "object",
             properties: {
-              title: {
-                type: "string",
-                description:
-                  "Concise event title in title case (e.g. 'Lunch with Sam', 'Dentist').",
-              },
+              title: { type: "string" },
               start: {
                 type: "string",
-                description:
-                  "Start datetime in LOCAL ISO 8601 with no timezone suffix: 'YYYY-MM-DDTHH:MM:SS'.",
+                description: "LOCAL ISO 8601 (YYYY-MM-DDTHH:MM:SS) — no Z.",
               },
               end: {
                 type: "string",
-                description:
-                  "End datetime in the same LOCAL ISO 8601 format. If the user didn't say a duration, default to 1 hour after start.",
+                description: "LOCAL ISO 8601. Default 1h after start.",
               },
-              location: {
-                type: ["string", "null"],
-                description: "Location if explicitly mentioned, else null.",
-              },
-              description: {
-                type: ["string", "null"],
-                description: "Notes if explicitly mentioned, else null.",
-              },
+              location: { type: ["string", "null"] },
+              description: { type: ["string", "null"] },
             },
             required: ["title", "start", "end"],
           },
         },
         {
-          name: "ask_clarification",
+          name: "update_event",
           description:
-            "Use this when the user's input is missing or vague on time OR date. Ask one short, friendly follow-up question for the missing piece. Never guess.",
+            "Use when the user wants to MODIFY one of their upcoming events. eventId MUST come from the events list provided in the system prompt.",
           input_schema: {
             type: "object",
             properties: {
-              question: {
+              eventId: {
                 type: "string",
-                description:
-                  "One short, friendly question to surface the missing info (e.g. 'What time on Thursday?').",
+                description: "Exact id from the upcoming events list.",
               },
+              updates: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  start: {
+                    type: "string",
+                    description: "LOCAL ISO 8601 (only if changing).",
+                  },
+                  end: {
+                    type: "string",
+                    description: "LOCAL ISO 8601 (only if changing).",
+                  },
+                  location: { type: ["string", "null"] },
+                  description: { type: ["string", "null"] },
+                },
+              },
+            },
+            required: ["eventId", "updates"],
+          },
+        },
+        {
+          name: "delete_event",
+          description:
+            "Use when the user wants to CANCEL/DELETE/REMOVE one of their upcoming events.",
+          input_schema: {
+            type: "object",
+            properties: {
+              eventId: { type: "string" },
+            },
+            required: ["eventId"],
+          },
+        },
+        {
+          name: "ask_clarification",
+          description:
+            "Use when input is too vague to act on, OR when multiple existing events could match an update/delete request.",
+          input_schema: {
+            type: "object",
+            properties: {
+              question: { type: "string" },
               missing: {
                 type: "array",
-                items: {
-                  type: "string",
-                  enum: ["time", "date", "duration", "title"],
-                },
-                description: "Which fields are missing.",
+                items: { type: "string" },
               },
             },
             required: ["question"],
           },
         },
       ],
-      system: `You convert natural-language sentences into calendar events.
+      system: `You convert natural-language sentences into calendar actions.
 
 Current local time: ${nowInTz} (${tz}).
-UTC reference: ${nowIso}.
 
-CRITICAL RULES:
-- A "specific time" is a concrete clock time like "3pm", "3:30", "noon", "midnight", "9am". Vague terms like "morning", "afternoon", "evening", "lunch", "lunchtime", "tonight", "later" are NOT specific — call ask_clarification.
-- A "specific date" is a resolvable date like "today", "tomorrow", "Tuesday", "next Tuesday", "June 5", "the 15th". Vague terms like "soon", "sometime", "next week", "this week" are NOT specific — call ask_clarification.
-- Never invent defaults. If time OR date is ambiguous, use ask_clarification.
-- When clarifying, quote the user's wording so they see what was incomplete (e.g. "What time on Thursday for 'lunch with Sam'?").
-- When you have all info, call create_event with LOCAL ISO 8601 (no Z, no offset). Default duration to 1 hour if not specified.`,
+The user's upcoming events (id | title | start → end):
+${eventsContext}
+
+RULES
+- A "specific time" is a concrete clock time ("3pm", "noon", "9:30"). Vague terms ("morning", "lunch", "tonight") are NOT specific.
+- A "specific date" is resolvable ("today", "tomorrow", "Tuesday", "June 5"). Vague terms ("soon", "sometime", "next week") are NOT.
+- For CREATE: never invent defaults — call ask_clarification when time OR date is ambiguous.
+- For UPDATE/DELETE: match the user's description to exactly one event in the list above. If multiple could match, call ask_clarification with options. If none match, call ask_clarification.
+- All datetimes you emit are LOCAL ISO 8601 (YYYY-MM-DDTHH:MM:SS, no trailing Z, no offset).
+- For update_event, ONLY include the fields that are actually changing in the "updates" object.`,
       messages: [{ role: "user", content: text }],
     });
 
@@ -143,9 +197,7 @@ CRITICAL RULES:
     );
     if (!toolBlock) {
       return NextResponse.json(
-        {
-          error: "Couldn't parse — try rephrasing.",
-        },
+        { error: "Couldn't parse — try rephrasing." },
         { status: 422 },
       );
     }
@@ -156,7 +208,7 @@ CRITICAL RULES:
         missing?: string[];
       };
       return NextResponse.json({
-        type: "needs_clarification",
+        action: "clarify",
         question: input.question,
         missing: input.missing ?? [],
       });
@@ -173,7 +225,57 @@ CRITICAL RULES:
           { status: 422 },
         );
       }
-      return NextResponse.json({ type: "event", event: parsed.data });
+      return NextResponse.json({ action: "create", event: parsed.data });
+    }
+
+    if (toolBlock.name === "update_event") {
+      const input = toolBlock.input as {
+        eventId?: string;
+        updates?: unknown;
+      };
+      const target = upcoming.find((e) => e.id === input.eventId);
+      if (!target) {
+        return NextResponse.json({
+          action: "clarify",
+          question:
+            "I couldn't find that event in your upcoming calendar. Which one did you mean?",
+        });
+      }
+      const updates = eventUpdatesSchema.safeParse(input.updates);
+      if (!updates.success) {
+        return NextResponse.json(
+          {
+            error: "Update payload invalid.",
+            issues: updates.error.issues,
+          },
+          { status: 422 },
+        );
+      }
+      return NextResponse.json({
+        action: "update",
+        eventId: target.id,
+        eventTitle: target.summary ?? "(no title)",
+        current: snapshotEvent(target),
+        updates: updates.data,
+      });
+    }
+
+    if (toolBlock.name === "delete_event") {
+      const input = toolBlock.input as { eventId?: string };
+      const target = upcoming.find((e) => e.id === input.eventId);
+      if (!target) {
+        return NextResponse.json({
+          action: "clarify",
+          question:
+            "I couldn't find that event in your upcoming calendar. Which one did you mean?",
+        });
+      }
+      return NextResponse.json({
+        action: "delete",
+        eventId: target.id,
+        eventTitle: target.summary ?? "(no title)",
+        current: snapshotEvent(target),
+      });
     }
 
     return NextResponse.json(
@@ -187,4 +289,40 @@ CRITICAL RULES:
       { status: 500 },
     );
   }
+}
+
+function snapshotEvent(ev: CalEvent) {
+  const s = getEventStart(ev);
+  const e = getEventEnd(ev);
+  return {
+    title: ev.summary ?? "(no title)",
+    start: localIso(s),
+    end: e ? localIso(e) : localIso(s),
+  };
+}
+
+function localIso(d: Date): string {
+  // Convert a Date to local-time ISO without timezone suffix.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}:00`;
+}
+
+function formatEventForPrompt(ev: CalEvent, tz: string): string {
+  const start = getEventStart(ev);
+  const end = getEventEnd(ev);
+  const opts: Intl.DateTimeFormatOptions = {
+    timeZone: tz,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  };
+  const startStr = start.toLocaleString("en-US", opts);
+  const endStr = end ? end.toLocaleString("en-US", opts) : startStr;
+  return `- id="${ev.id}" | "${ev.summary ?? "(no title)"}" | ${startStr} → ${endStr}`;
 }

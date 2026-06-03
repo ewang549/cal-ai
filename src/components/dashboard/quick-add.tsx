@@ -2,23 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Check, MessageCircleQuestion, Sparkles, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  MessageCircleQuestion,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { ParsedEvent } from "@/lib/event-schema";
+import type {
+  CreateAction,
+  DeleteAction,
+  ParseResponse,
+  ParsedEvent,
+  UpdateAction,
+} from "@/lib/event-schema";
+
+type Action = CreateAction | UpdateAction | DeleteAction;
 
 type State =
   | { kind: "idle" }
   | { kind: "parsing" }
   | { kind: "clarifying"; question: string; originalText: string }
-  | { kind: "confirming"; event: ParsedEvent }
-  | { kind: "creating"; event: ParsedEvent }
-  | { kind: "success"; title: string }
+  | { kind: "confirming"; action: Action }
+  | { kind: "executing"; action: Action }
+  | { kind: "success"; message: string }
   | { kind: "error"; message: string };
-
-type ParseResponse =
-  | { type: "event"; event: ParsedEvent }
-  | { type: "needs_clarification"; question: string; missing?: string[] };
 
 const dayFmt = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
@@ -42,11 +53,8 @@ export function QuickAdd() {
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : "UTC";
 
-  // auto-focus the clarification input when it appears
   useEffect(() => {
-    if (state.kind === "clarifying") {
-      clarifyInputRef.current?.focus();
-    }
+    if (state.kind === "clarifying") clarifyInputRef.current?.focus();
   }, [state.kind]);
 
   async function parseText(textToParse: string) {
@@ -62,7 +70,7 @@ export function QuickAdd() {
         throw new Error(err.error || `Parse failed (${res.status})`);
       }
       const data = (await res.json()) as ParseResponse;
-      if (data.type === "needs_clarification") {
+      if (data.action === "clarify") {
         setState({
           kind: "clarifying",
           question: data.question,
@@ -70,7 +78,7 @@ export function QuickAdd() {
         });
         setClarification("");
       } else {
-        setState({ kind: "confirming", event: data.event });
+        setState({ kind: "confirming", action: data });
       }
     } catch (err) {
       setState({
@@ -93,19 +101,20 @@ export function QuickAdd() {
     await parseText(combined);
   }
 
-  async function handleConfirm(event: ParsedEvent) {
-    setState({ kind: "creating", event });
+  async function handleConfirm(action: Action) {
+    setState({ kind: "executing", action });
     try {
-      const res = await fetch("/api/events/create", {
+      const { endpoint, body, successMessage } = endpointFor(action, tz);
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...event, timezone: tz }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Create failed (${res.status})`);
+        throw new Error(err.error || `Failed (${res.status})`);
       }
-      setState({ kind: "success", title: event.title });
+      setState({ kind: "success", message: successMessage });
       setText("");
       setClarification("");
       router.refresh();
@@ -113,7 +122,7 @@ export function QuickAdd() {
     } catch (err) {
       setState({
         kind: "error",
-        message: err instanceof Error ? err.message : "Create failed",
+        message: err instanceof Error ? err.message : "Failed",
       });
     }
   }
@@ -132,7 +141,7 @@ export function QuickAdd() {
     <section className="mb-12 rounded-2xl border border-rule bg-surface p-5 shadow-[0_20px_60px_-30px_rgba(26,22,18,0.18)] sm:p-6">
       <div className="mb-3 flex items-center gap-2 font-mono text-[11px] tracking-[0.18em] uppercase text-muted">
         <Sparkles className="size-3.5 text-accent" />
-        Add by typing
+        Add · move · cancel — by typing
       </div>
 
       <form
@@ -144,21 +153,19 @@ export function QuickAdd() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={isFormBusy || state.kind === "clarifying"}
-          placeholder="dentist next Tuesday 3pm for an hour"
-          aria-label="Describe an event in plain English"
+          placeholder="dentist next Tuesday 3pm   ·   move my 3pm to Friday   ·   cancel lunch Tuesday"
+          aria-label="Describe what to do, in plain English"
           className="h-12 flex-1 rounded-xl border border-rule bg-cream px-4 text-[15px] text-ink placeholder-muted outline-none transition-colors duration-200 focus:border-accent disabled:opacity-60"
         />
         <Button
           type="submit"
           size="lg"
           disabled={
-            !text.trim() ||
-            isFormBusy ||
-            state.kind === "clarifying"
+            !text.trim() || isFormBusy || state.kind === "clarifying"
           }
           className="group"
         >
-          {state.kind === "parsing" ? "Parsing…" : "Add event"}
+          {state.kind === "parsing" ? "Parsing…" : "Go"}
           {state.kind !== "parsing" && (
             <ArrowUpRight className="ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           )}
@@ -177,33 +184,24 @@ export function QuickAdd() {
         />
       )}
 
-      {state.kind === "confirming" && (
-        <ConfirmCard
-          event={state.event}
-          busy={false}
-          onConfirm={() => handleConfirm(state.event)}
+      {(state.kind === "confirming" || state.kind === "executing") && (
+        <ActionCard
+          action={state.action}
+          busy={state.kind === "executing"}
+          onConfirm={() => handleConfirm(state.action)}
           onCancel={resetToIdle}
         />
       )}
-      {state.kind === "creating" && (
-        <ConfirmCard
-          event={state.event}
-          busy={true}
-          onConfirm={() => {}}
-          onCancel={() => {}}
-        />
-      )}
+
       {state.kind === "success" && (
         <div className="mt-4 flex items-center gap-3 rounded-xl border border-rule bg-cream px-4 py-3">
           <div className="flex size-7 items-center justify-center rounded-full bg-emerald-500 text-cream">
             <Check className="size-4" strokeWidth={2.5} />
           </div>
-          <div className="flex-1 text-[15px] text-ink">
-            Added <span className="font-medium">{state.title}</span> to your
-            calendar.
-          </div>
+          <div className="flex-1 text-[15px] text-ink">{state.message}</div>
         </div>
       )}
+
       {state.kind === "error" && (
         <div className="mt-4 flex items-start gap-3 rounded-xl border border-rule bg-cream px-4 py-3">
           <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-cream">
@@ -224,6 +222,38 @@ export function QuickAdd() {
     </section>
   );
 }
+
+function endpointFor(
+  action: Action,
+  tz: string,
+): { endpoint: string; body: unknown; successMessage: string } {
+  if (action.action === "create") {
+    return {
+      endpoint: "/api/events/create",
+      body: { ...action.event, timezone: tz },
+      successMessage: `Added “${action.event.title}” to your calendar.`,
+    };
+  }
+  if (action.action === "update") {
+    return {
+      endpoint: "/api/events/update",
+      body: {
+        eventId: action.eventId,
+        updates: action.updates,
+        timezone: tz,
+      },
+      successMessage: `Updated “${action.eventTitle}”.`,
+    };
+  }
+  // delete
+  return {
+    endpoint: "/api/events/delete",
+    body: { eventId: action.eventId },
+    successMessage: `Cancelled “${action.eventTitle}”.`,
+  };
+}
+
+/* ─────────────────────── Cards ─────────────────────── */
 
 function ClarifyCard({
   question,
@@ -278,12 +308,7 @@ function ClarifyCard({
           <Button type="submit" size="default" disabled={!value.trim()}>
             Try again
           </Button>
-          <Button
-            type="button"
-            size="default"
-            variant="ghost"
-            onClick={onCancel}
-          >
+          <Button type="button" size="default" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
         </form>
@@ -292,74 +317,274 @@ function ClarifyCard({
   );
 }
 
-function ConfirmCard({
-  event,
+function ActionCard({
+  action,
   busy,
   onConfirm,
   onCancel,
 }: {
-  event: ParsedEvent;
+  action: Action;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const start = new Date(event.start);
-  const end = new Date(event.end);
+  if (action.action === "create") {
+    return (
+      <CardShell
+        eyebrow="Here's what I understood"
+        rightLabel="Confirm to add"
+        accent="add"
+      >
+        <EventBlock
+          title={action.event.title}
+          start={action.event.start}
+          end={action.event.end}
+          location={action.event.location ?? undefined}
+          description={action.event.description ?? undefined}
+        />
+        <CardActions
+          busy={busy}
+          confirmLabel="Confirm & add"
+          confirmIcon={<Check className="mr-1.5 size-3.5" strokeWidth={2.25} />}
+          onConfirm={onConfirm}
+          onCancel={onCancel}
+        />
+      </CardShell>
+    );
+  }
+
+  if (action.action === "update") {
+    const updates = action.updates;
+    return (
+      <CardShell
+        eyebrow={`Update “${action.eventTitle}”`}
+        rightLabel="Confirm to update"
+        accent="update"
+      >
+        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+          <DiffSide
+            label="Before"
+            title={action.current.title}
+            start={action.current.start}
+            end={action.current.end}
+          />
+          <DiffSide
+            label="After"
+            title={updates.title ?? action.current.title}
+            start={updates.start ?? action.current.start}
+            end={updates.end ?? action.current.end}
+            location={updates.location ?? undefined}
+            description={updates.description ?? undefined}
+          />
+        </div>
+        <CardActions
+          busy={busy}
+          confirmLabel="Confirm & update"
+          confirmIcon={<Check className="mr-1.5 size-3.5" strokeWidth={2.25} />}
+          onConfirm={onConfirm}
+          onCancel={onCancel}
+        />
+      </CardShell>
+    );
+  }
+
+  // delete
+  return (
+    <CardShell
+      eyebrow={`Cancel “${action.eventTitle}”?`}
+      rightLabel="Destructive action"
+      accent="delete"
+    >
+      <EventBlock
+        title={action.current.title}
+        start={action.current.start}
+        end={action.current.end}
+        muted
+      />
+      <CardActions
+        busy={busy}
+        confirmLabel="Yes, cancel it"
+        confirmIcon={<Trash2 className="mr-1.5 size-3.5" strokeWidth={2.25} />}
+        confirmVariant="default"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
+    </CardShell>
+  );
+}
+
+function CardShell({
+  eyebrow,
+  rightLabel,
+  accent,
+  children,
+}: {
+  eyebrow: string;
+  rightLabel: string;
+  accent: "add" | "update" | "delete";
+  children: React.ReactNode;
+}) {
+  const barColor =
+    accent === "delete"
+      ? "bg-accent"
+      : accent === "update"
+        ? "bg-ink"
+        : "bg-accent";
   return (
     <div className="mt-5 overflow-hidden rounded-xl border border-rule bg-cream">
       <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
         <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-accent">
-          Here&apos;s what I understood
+          {eyebrow}
         </div>
         <div className="font-mono text-[10px] tracking-wider uppercase text-muted">
-          Confirm to add
+          {rightLabel}
         </div>
       </div>
-
       <div className="flex items-stretch">
-        <div className="w-1.5 bg-accent" />
-        <div className="flex flex-1 flex-col gap-2 px-5 py-4">
-          <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-muted">
-            {dayFmt.format(start)}
-          </div>
-          <div className="font-display text-2xl tracking-tight text-ink">
-            {event.title}
-          </div>
-          <div className="font-mono text-xs text-ink-soft">
-            {timeFmt.format(start)} – {timeFmt.format(end)}
-          </div>
-          {event.location && (
-            <div className="text-sm text-ink-soft">📍 {event.location}</div>
-          )}
-          {event.description && (
-            <div className="text-sm leading-relaxed text-ink-soft">
-              {event.description}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-rule bg-surface px-4 py-3">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={onCancel}
-          disabled={busy}
-        >
-          Cancel
-        </Button>
-        <Button type="button" size="sm" onClick={onConfirm} disabled={busy}>
-          {busy ? (
-            "Adding…"
-          ) : (
-            <>
-              <Check className="mr-1.5 size-3.5" strokeWidth={2.25} />
-              Confirm &amp; add
-            </>
-          )}
-        </Button>
+        <div className={`w-1.5 ${barColor}`} />
+        <div className="flex-1">{children}</div>
       </div>
     </div>
   );
 }
+
+function EventBlock({
+  title,
+  start,
+  end,
+  location,
+  description,
+  muted = false,
+}: {
+  title: string;
+  start: string;
+  end: string;
+  location?: string;
+  description?: string;
+  muted?: boolean;
+}) {
+  const s = new Date(start);
+  const e = new Date(end);
+  return (
+    <div className="flex flex-col gap-2 px-5 py-4">
+      <div className="font-mono text-[11px] tracking-[0.18em] uppercase text-muted">
+        {dayFmt.format(s)}
+      </div>
+      <div
+        className={`font-display text-2xl tracking-tight ${
+          muted ? "text-ink-soft line-through" : "text-ink"
+        }`}
+      >
+        {title}
+      </div>
+      <div className="font-mono text-xs text-ink-soft">
+        {timeFmt.format(s)} – {timeFmt.format(e)}
+      </div>
+      {location && (
+        <div className="text-sm text-ink-soft">📍 {location}</div>
+      )}
+      {description && (
+        <div className="text-sm leading-relaxed text-ink-soft">
+          {description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiffSide({
+  label,
+  title,
+  start,
+  end,
+  location,
+  description,
+}: {
+  label: "Before" | "After";
+  title: string;
+  start: string;
+  end: string;
+  location?: string;
+  description?: string;
+}) {
+  const s = new Date(start);
+  const e = new Date(end);
+  return (
+    <div
+      className={`flex flex-col gap-1.5 rounded-lg border border-rule ${
+        label === "Before" ? "bg-surface" : "bg-cream"
+      } p-3.5`}
+    >
+      <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-muted">
+        {label}
+      </div>
+      <div
+        className={`font-display text-lg tracking-tight ${
+          label === "Before" ? "text-ink-soft" : "text-ink"
+        }`}
+      >
+        {title}
+      </div>
+      <div className="font-mono text-xs text-ink-soft">
+        {dayFmt.format(s)} · {timeFmt.format(s)} – {timeFmt.format(e)}
+      </div>
+      {location && (
+        <div className="text-xs text-ink-soft">📍 {location}</div>
+      )}
+      {description && (
+        <div className="text-xs leading-relaxed text-ink-soft">
+          {description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CardActions({
+  busy,
+  confirmLabel,
+  confirmIcon,
+  confirmVariant = "default",
+  onConfirm,
+  onCancel,
+}: {
+  busy: boolean;
+  confirmLabel: string;
+  confirmIcon: React.ReactNode;
+  confirmVariant?: "default" | "accent";
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-rule bg-surface px-4 py-3">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={onCancel}
+        disabled={busy}
+      >
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={confirmVariant}
+        onClick={onConfirm}
+        disabled={busy}
+      >
+        {busy ? (
+          "Working…"
+        ) : (
+          <>
+            {confirmIcon}
+            {confirmLabel}
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// Re-export ParsedEvent only so the existing import path keeps working if needed.
+export type { ParsedEvent };
