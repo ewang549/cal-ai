@@ -1,26 +1,56 @@
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import {
+  DashboardHeader,
+  DashboardView,
+} from "@/components/dashboard/dashboard-header";
+import { ErrorCard } from "@/components/dashboard/error-card";
+import { MonthView } from "@/components/dashboard/month-view";
 import { Nav } from "@/components/landing/nav";
-import { WeekView } from "@/components/dashboard/week-view";
-import { CalEvent, fetchWeekEvents } from "@/lib/google-calendar";
+import { QuickAdd } from "@/components/dashboard/quick-add";
+import { WeekListView } from "@/components/dashboard/week-view";
+import {
+  CalEvent,
+  endOfMonthGrid,
+  endOfWeek,
+  fetchEventsForRange,
+  fromAnchorString,
+  startOfMonthGrid,
+  startOfWeek,
+} from "@/lib/google-calendar";
 
-// Never cache — we want a fresh calendar pull every time.
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const session = await auth();
+type SP = { view?: string; anchor?: string };
 
-  // Belt-and-suspenders: if for any reason there's no signed-in user, bounce
-  // them back to the landing page.
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<SP>;
+}) {
+  const session = await auth();
   if (!session?.accessToken) {
     redirect("/");
   }
 
+  const sp = await searchParams;
+  const view: DashboardView = sp.view === "month" ? "month" : "list";
+  const anchor = sp.anchor ? fromAnchorString(sp.anchor) : new Date();
+
+  const [rangeStart, rangeEnd] =
+    view === "month"
+      ? [startOfMonthGrid(anchor), endOfMonthGrid(anchor)]
+      : [startOfWeek(anchor), endOfWeek(anchor)];
+
   let events: CalEvent[] = [];
   let error: string | null = null;
   try {
-    events = await fetchWeekEvents(session.accessToken);
+    events = await fetchEventsForRange(
+      session.accessToken,
+      rangeStart,
+      rangeEnd,
+    );
   } catch (e) {
     error = e instanceof Error ? e.message : "Couldn't reach Google Calendar.";
   }
@@ -28,12 +58,24 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-cream text-ink">
       <Nav />
-      <main className="mx-auto max-w-4xl px-6 py-12 sm:px-10 sm:py-16">
-        <WeekView
-          events={events}
-          error={error}
+      <main className="mx-auto max-w-5xl px-6 py-12 sm:px-10 sm:py-16">
+        <DashboardHeader
+          view={view}
+          anchor={anchor}
           userName={session.user?.name ?? null}
+          eventCount={events.length}
+          error={error}
         />
+
+        <QuickAdd />
+
+        {error ? (
+          <ErrorCard error={error} />
+        ) : view === "month" ? (
+          <MonthView events={events} anchor={anchor} />
+        ) : (
+          <WeekListView events={events} error={null} anchor={anchor} />
+        )}
       </main>
     </div>
   );

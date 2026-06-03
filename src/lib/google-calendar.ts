@@ -1,9 +1,7 @@
 /**
- * Thin client for Google Calendar API.
+ * Thin client + date helpers for Google Calendar.
  *
- * No SDK — just `fetch` with the OAuth access_token we stored on the
- * session. Keeps the dependency footprint small and makes the API call
- * easy to read.
+ * No SDK — `fetch` with the OAuth access_token we stored on the session.
  */
 
 export type CalEvent = {
@@ -16,36 +14,104 @@ export type CalEvent = {
   htmlLink?: string;
 };
 
-/** Sunday 00:00 of the current week (US convention). */
+/* ─── date helpers ─── */
+
+export function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+export function addMonths(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setMonth(r.getMonth() + n);
+  return r;
+}
+
+/** Sunday 00:00 of the week containing `d` (US convention). */
 export function startOfWeek(d: Date = new Date()): Date {
-  const result = new Date(d);
-  result.setDate(result.getDate() - result.getDay());
-  result.setHours(0, 0, 0, 0);
-  return result;
+  const r = new Date(d);
+  r.setDate(r.getDate() - r.getDay());
+  r.setHours(0, 0, 0, 0);
+  return r;
 }
 
 /** Exclusive end — Sunday 00:00 of the following week. */
 export function endOfWeek(d: Date = new Date()): Date {
-  const result = startOfWeek(d);
-  result.setDate(result.getDate() + 7);
-  return result;
+  const r = startOfWeek(d);
+  r.setDate(r.getDate() + 7);
+  return r;
 }
 
-/** Fetch all single-instance events on the primary calendar for this week. */
-export async function fetchWeekEvents(accessToken: string): Promise<CalEvent[]> {
+/** First day of the month at 00:00. */
+export function startOfMonth(d: Date = new Date()): Date {
+  const r = new Date(d);
+  r.setDate(1);
+  r.setHours(0, 0, 0, 0);
+  return r;
+}
+
+/** First day of the NEXT month (exclusive end). */
+export function endOfMonth(d: Date = new Date()): Date {
+  const r = startOfMonth(d);
+  r.setMonth(r.getMonth() + 1);
+  return r;
+}
+
+/** Sunday of the week containing the 1st — top-left cell of the month grid. */
+export function startOfMonthGrid(d: Date = new Date()): Date {
+  return startOfWeek(startOfMonth(d));
+}
+
+/** Exclusive end — Sunday after the last visible row of the month grid. */
+export function endOfMonthGrid(d: Date = new Date()): Date {
+  const lastDayOfMonth = new Date(endOfMonth(d));
+  lastDayOfMonth.setDate(lastDayOfMonth.getDate() - 1);
+  return endOfWeek(lastDayOfMonth);
+}
+
+export function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/** Format a date to the "YYYY-MM-DD" string we use as the anchor param. */
+export function toAnchorString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Parse a "YYYY-MM-DD" anchor back into a Date (local midnight). */
+export function fromAnchorString(s: string): Date {
+  const [y, m, day] = s.split("-").map(Number);
+  if (!y || !m || !day) return new Date();
+  return new Date(y, m - 1, day);
+}
+
+/* ─── fetch ─── */
+
+export async function fetchEventsForRange(
+  accessToken: string,
+  rangeStart: Date,
+  rangeEnd: Date,
+): Promise<CalEvent[]> {
   const params = new URLSearchParams({
-    timeMin: startOfWeek().toISOString(),
-    timeMax: endOfWeek().toISOString(),
-    singleEvents: "true", // expand recurring events into instances
+    timeMin: rangeStart.toISOString(),
+    timeMax: rangeEnd.toISOString(),
+    singleEvents: "true",
     orderBy: "startTime",
-    maxResults: "100",
+    maxResults: "250",
   });
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
-      // Never cache — we want fresh events every dashboard load.
       cache: "no-store",
     },
   );
@@ -61,7 +127,8 @@ export async function fetchWeekEvents(accessToken: string): Promise<CalEvent[]> 
   return data.items ?? [];
 }
 
-/** Get a JS Date for an event, handling both timed and all-day events. */
+/* ─── event introspection ─── */
+
 export function getEventStart(event: CalEvent): Date {
   const iso = event.start.dateTime ?? event.start.date;
   return iso ? new Date(iso) : new Date();
