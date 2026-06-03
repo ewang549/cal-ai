@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { eventUpdatesSchema } from "@/lib/event-schema";
+import { localToUtcIso } from "@/lib/google-calendar";
 
 /**
  * POST /api/events/update
@@ -41,8 +42,11 @@ export async function POST(req: Request) {
   if (u.title) patch.summary = u.title;
   if (u.location !== undefined) patch.location = u.location ?? null;
   if (u.description !== undefined) patch.description = u.description ?? null;
-  if (u.start) patch.start = { dateTime: u.start, timeZone: tz };
-  if (u.end) patch.end = { dateTime: u.end, timeZone: tz };
+  // Convert local-wall-clock to UTC to remove any tz ambiguity.
+  if (u.start)
+    patch.start = { dateTime: localToUtcIso(u.start, tz), timeZone: tz };
+  if (u.end)
+    patch.end = { dateTime: localToUtcIso(u.end, tz), timeZone: tz };
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(

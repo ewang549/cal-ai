@@ -93,6 +93,27 @@ export function fromAnchorString(s: string): Date {
   return new Date(y, m - 1, day);
 }
 
+/**
+ * Convert a local-wall-clock ISO string (e.g. "2026-06-09T15:00:00") in the
+ * given IANA timezone (e.g. "Asia/Tokyo") to a precise UTC ISO string with a
+ * trailing "Z". Google Calendar then has zero ambiguity about when the event
+ * actually starts.
+ *
+ * The trick: take the wall-clock string and *pretend* it's UTC. Format that
+ * pseudo-UTC date into the target timezone — the result tells us how many
+ * hours the target timezone is offset from UTC for this particular date
+ * (which handles DST). Apply the inverse to recover the real UTC.
+ */
+export function localToUtcIso(localIso: string, tz: string): string {
+  const guess = new Date(`${localIso}Z`); // pretend it's UTC
+  // "sv-SE" gives "YYYY-MM-DD HH:MM:SS" — easy to re-parse.
+  const wall = guess.toLocaleString("sv-SE", { timeZone: tz });
+  const guessAsTz = new Date(`${wall.replace(" ", "T")}Z`);
+  const offsetMs = guess.getTime() - guessAsTz.getTime();
+  const actual = new Date(guess.getTime() + offsetMs);
+  return actual.toISOString();
+}
+
 /* ─── fetch ─── */
 
 export async function fetchEventsForRange(

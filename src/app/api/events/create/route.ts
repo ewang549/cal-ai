@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { eventSchema } from "@/lib/event-schema";
+import { localToUtcIso } from "@/lib/google-calendar";
 
 /**
  * POST /api/events/create
@@ -37,6 +38,11 @@ export async function POST(req: Request) {
 
   const ev = parsed.data;
 
+  // Convert local-wall-clock times to unambiguous UTC ISO before sending.
+  // Avoids any ambiguity in how Google interprets dateTime + timeZone.
+  const startUtc = localToUtcIso(ev.start, tz);
+  const endUtc = localToUtcIso(ev.end, tz);
+
   const res = await fetch(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
     {
@@ -49,8 +55,8 @@ export async function POST(req: Request) {
         summary: ev.title,
         location: ev.location ?? undefined,
         description: ev.description ?? undefined,
-        start: { dateTime: ev.start, timeZone: tz },
-        end: { dateTime: ev.end, timeZone: tz },
+        start: { dateTime: startUtc, timeZone: tz },
+        end: { dateTime: endUtc, timeZone: tz },
       }),
     },
   );
