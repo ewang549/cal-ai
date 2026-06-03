@@ -5,10 +5,10 @@ import {
   DashboardHeader,
   DashboardView,
 } from "@/components/dashboard/dashboard-header";
+import { Assistant } from "@/components/dashboard/assistant";
 import { ErrorCard } from "@/components/dashboard/error-card";
 import { MonthView } from "@/components/dashboard/month-view";
 import { Nav } from "@/components/landing/nav";
-import { QuickAdd } from "@/components/dashboard/quick-add";
 import { WeekListView } from "@/components/dashboard/week-view";
 import {
   CalEvent,
@@ -76,8 +76,8 @@ export default async function DashboardPage({
         )}
       </main>
 
-      {/* Floating composer pinned to the bottom of the viewport */}
-      <QuickAdd />
+      {/* Conversational assistant pinned to the bottom of the viewport */}
+      <Assistant />
     </div>
   );
 }
