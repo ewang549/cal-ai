@@ -1,0 +1,23 @@
+/**
+ * Type augmentations for next-auth.
+ *
+ * By default `Session` doesn't include `accessToken`. We added it in the
+ * callbacks in src/auth.ts, so we tell TypeScript it exists too — otherwise
+ * `session.accessToken` would be a red squiggle.
+ */
+import "next-auth";
+import "next-auth/jwt";
+
+declare module "next-auth" {
+  interface Session {
+    accessToken?: string;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: number;
+  }
+}

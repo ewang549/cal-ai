@@ -5,14 +5,14 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { DemoCard } from "@/components/landing/demo-card";
 import { EarlyAccessForm } from "@/components/landing/early-access-form";
 import { Hero } from "@/components/landing/hero";
 import { Integrations } from "@/components/landing/integrations";
+import { Nav } from "@/components/landing/nav";
 import { Vision } from "@/components/landing/vision";
 
-export default function Home() {
+export default async function Home() {
   return (
     <div className="min-h-screen bg-cream text-ink">
       <Nav />
@@ -26,57 +26,6 @@ export default function Home() {
       </main>
       <Footer />
     </div>
-  );
-}
-
-/* ───────────────────────── NAV ───────────────────────── */
-
-function Nav() {
-  return (
-    <header className="sticky top-0 z-50 border-b border-rule/40 bg-cream/70 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 sm:px-10">
-        <a
-          href="#"
-          className="group flex items-center gap-2 font-mono text-sm tracking-[0.18em] uppercase"
-        >
-          <span className="inline-block size-1.5 rounded-full bg-accent transition-transform duration-200 group-hover:scale-125" />
-          <span className="font-medium text-ink">Cal&nbsp;AI</span>
-        </a>
-
-        <nav className="hidden items-center gap-8 text-sm text-ink-soft sm:flex">
-          <a
-            href="#how"
-            className="transition-colors duration-200 hover:text-ink"
-          >
-            How it works
-          </a>
-          <a
-            href="#features"
-            className="transition-colors duration-200 hover:text-ink"
-          >
-            Features
-          </a>
-          <a
-            href="#access"
-            className="transition-colors duration-200 hover:text-ink"
-          >
-            Early access
-          </a>
-        </nav>
-
-        <div className="flex items-center gap-3">
-          <a
-            href="#access"
-            className="hidden text-sm text-ink-soft transition-colors duration-200 hover:text-ink sm:inline"
-          >
-            Sign in
-          </a>
-          <Button size="sm" asChild>
-            <a href="#access">Get early access</a>
-          </Button>
-        </div>
-      </div>
-    </header>
   );
 }
 
