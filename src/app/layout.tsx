@@ -36,7 +36,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}
     >
-      <body>
+      {/* suppressHydrationWarning: browser extensions like Grammarly inject
+          attributes onto <body> before React hydrates, which would otherwise
+          throw a hydration mismatch. Scoped to body only. */}
+      <body suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

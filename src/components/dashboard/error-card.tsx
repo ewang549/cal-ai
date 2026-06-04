@@ -1,4 +1,4 @@
-import { signOut } from "@/auth";
+import { signOutAction } from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 
 export function ErrorCard({ error }: { error: string }) {
@@ -41,13 +41,7 @@ export function ErrorCard({ error }: { error: string }) {
               the full consent screen including calendar will appear.
             </li>
           </ol>
-          <form
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/" });
-            }}
-            className="mt-7"
-          >
+          <form action={signOutAction} className="mt-7">
             <Button type="submit" size="lg">
               Sign out &amp; try again
             </Button>

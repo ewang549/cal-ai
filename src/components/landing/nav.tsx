@@ -1,15 +1,20 @@
 import { ArrowRight, LogOut } from "lucide-react";
 
-import { auth, signIn, signOut } from "@/auth";
+import { auth } from "@/auth";
+import {
+  signInWithGoogleAction,
+  signOutAction,
+} from "@/lib/auth-actions";
 import { Button } from "@/components/ui/button";
 
 /**
  * Top nav. Async server component — calls `auth()` to check whether the
  * user is signed in, and renders different right-hand controls accordingly.
  *
- * Sign-in / sign-out happen via server actions (the inline `"use server"`
- * functions on each form). This is the canonical Auth.js v5 pattern: no
- * client JS required for the auth controls themselves.
+ * Sign-in / sign-out happen via server actions defined in
+ * `src/lib/auth-actions.ts`. They live in a dedicated `"use server"` file
+ * so they can be imported from client components too (the inline
+ * `() => { "use server"; ... }` pattern only works in server components).
  */
 export async function Nav() {
   const session = await auth();
@@ -63,12 +68,7 @@ export async function Nav() {
 
 function SignInButton() {
   return (
-    <form
-      action={async () => {
-        "use server";
-        await signIn("google", { redirectTo: "/dashboard" });
-      }}
-    >
+    <form action={signInWithGoogleAction}>
       <Button size="sm" type="submit" className="group">
         Continue with Google
         <ArrowRight className="ml-1.5 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
@@ -91,12 +91,7 @@ function SignedInControls({ userEmail }: { userEmail: string | null }) {
           {userEmail}
         </span>
       )}
-      <form
-        action={async () => {
-          "use server";
-          await signOut({ redirectTo: "/" });
-        }}
-      >
+      <form action={signOutAction}>
         <Button
           size="sm"
           variant="outline"
