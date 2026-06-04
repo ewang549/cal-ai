@@ -6,6 +6,8 @@ import {
   ArrowUpRight,
   Calendar,
   Check,
+  Mic,
+  MicOff,
   RotateCw,
   Sparkles,
   Trash2,
@@ -20,6 +22,7 @@ import type {
   UpdateAction,
 } from "@/lib/event-schema";
 import { formatRecurrence } from "@/lib/recurrence";
+import { useVoiceInput } from "@/lib/use-voice-input";
 
 /* ─── types ─── */
 
@@ -92,6 +95,16 @@ export function Assistant() {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [searchParams]);
+
+  // Voice-to-text. Final transcript drops into the input — user reviews +
+  // hits Go, so a misheard word doesn't silently submit.
+  const voice = useVoiceInput({
+    onFinal: (text) => {
+      setInput((prev) => (prev ? `${prev} ${text}` : text));
+      // Re-focus so user can hit Enter immediately.
+      setTimeout(() => inputRef.current?.focus(), 0);
+    },
+  });
 
   async function send(text: string) {
     if (!text.trim() || busy) return;
@@ -277,17 +290,59 @@ export function Assistant() {
           <input
             ref={inputRef}
             type="text"
-            value={input}
+            value={voice.listening && voice.interim ? voice.interim : input}
             onChange={(e) => setInput(e.target.value)}
-            disabled={busy}
-            placeholder="Ask Cal AI anything · or just describe what you need"
+            disabled={busy || voice.listening}
+            placeholder={
+              voice.listening
+                ? "Listening… speak now"
+                : "Ask Cal AI anything · or just describe what you need"
+            }
             aria-label="Ask Cal AI"
             className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder-muted outline-none disabled:opacity-60"
           />
+          {voice.supported && (
+            <button
+              type="button"
+              onClick={() => (voice.listening ? voice.stop() : voice.start())}
+              disabled={busy}
+              aria-label={voice.listening ? "Stop listening" : "Talk to Cal AI"}
+              aria-pressed={voice.listening}
+              title={
+                voice.error
+                  ? `Mic: ${voice.error}`
+                  : voice.listening
+                    ? "Stop"
+                    : "Talk to Cal AI"
+              }
+              className={[
+                "flex size-10 shrink-0 items-center justify-center rounded-full transition-colors duration-200",
+                voice.listening
+                  ? "bg-accent text-cream shadow-[0_4px_12px_-4px_rgba(200,75,26,0.5)] hover:bg-accent/90"
+                  : "text-ink-soft hover:bg-cream-deep hover:text-ink",
+                busy ? "opacity-50" : "",
+              ].join(" ")}
+            >
+              {voice.listening ? (
+                <>
+                  <Mic className="size-4" />
+                  <span className="sr-only">Listening</span>
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute size-10 animate-ping rounded-full bg-accent/30"
+                  />
+                </>
+              ) : voice.error ? (
+                <MicOff className="size-4" />
+              ) : (
+                <Mic className="size-4" />
+              )}
+            </button>
+          )}
           <Button
             type="submit"
             size="default"
-            disabled={!input.trim() || busy}
+            disabled={!input.trim() || busy || voice.listening}
             className="group h-10"
           >
             {busy ? (
