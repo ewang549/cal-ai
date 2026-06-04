@@ -238,18 +238,7 @@ function clampInt(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.floor(v)));
 }
 
-// Avoid circular import — re-implement what we need
-function localToUtcIso(localIso: string, tz: string): string {
-  const guess = new Date(`${localIso}Z`);
-  const wall = guess.toLocaleString("sv-SE", { timeZone: tz });
-  const guessAsTz = new Date(`${wall.replace(" ", "T")}Z`);
-  const offsetMs = guess.getTime() - guessAsTz.getTime();
-  return new Date(guess.getTime() + offsetMs).toISOString();
-}
-
 /* ─── nudges: detect at-risk deadlines ─── */
-
-import type { CalEvent as _CalEvent } from "@/lib/google-calendar";
 
 export type AtRiskDeadline = {
   id: string;
@@ -267,7 +256,7 @@ const DEADLINE_KEYWORDS =
  * deadline keyword OR is bracketed (typical syllabus import format).
  */
 export function findAtRiskDeadlines(
-  events: _CalEvent[],
+  events: CalEvent[],
   withinHours = 72,
 ): AtRiskDeadline[] {
   const now = new Date();
