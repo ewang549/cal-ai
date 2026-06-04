@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import { auth } from "@/auth";
 
@@ -58,5 +59,8 @@ export async function POST(req: Request) {
   }
 
   const updated = await res.json();
+  // Tell Next.js that the dashboard's data behind this route is stale so
+  // router.refresh() will actually re-fetch the events (not just re-render).
+  revalidatePath("/dashboard");
   return NextResponse.json(updated);
 }

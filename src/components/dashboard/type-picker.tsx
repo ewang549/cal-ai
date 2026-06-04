@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   BookOpen,
   Calendar,
   Check,
@@ -50,6 +51,7 @@ export function TypePicker({
   const [selected, setSelected] = useState<EventType | null>(currentType);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -96,6 +98,7 @@ export function TypePicker({
 
   async function pick(type: EventType | null) {
     setBusy(true);
+    setError(null);
     setSelected(type);
     try {
       const res = await fetch("/api/events/type", {
@@ -103,15 +106,19 @@ export function TypePicker({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId, type }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      router.refresh();
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed (${res.status})`);
+      }
+      setTimeout(() => router.refresh(), 250);
+      closeMenu();
     } catch (err) {
       setSelected(currentType);
+      setError(err instanceof Error ? err.message : "Couldn't save");
       // eslint-disable-next-line no-console
       console.error("Set type failed:", err);
     } finally {
       setBusy(false);
-      closeMenu();
     }
   }
 
@@ -150,12 +157,22 @@ export function TypePicker({
             }}
             className="z-[80] max-h-[60vh] overflow-y-auto rounded-xl border border-rule bg-surface shadow-[0_20px_50px_-15px_rgba(26,22,18,0.4)]"
           >
+            {error && (
+              <div className="flex items-start gap-2 border-b border-rule bg-accent/10 px-3 py-2 text-[12px] text-accent">
+                <AlertCircle
+                  className="mt-0.5 size-3.5 shrink-0"
+                  strokeWidth={2}
+                />
+                <span className="flex-1 leading-tight">{error}</span>
+              </div>
+            )}
             <button
               type="button"
               role="option"
               aria-selected={selected === null}
               onClick={() => pick(null)}
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink-soft transition-colors duration-100 hover:bg-cream-deep/40"
+              disabled={busy}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink-soft transition-colors duration-100 hover:bg-cream-deep/40 disabled:opacity-60"
             >
               <span className="flex items-center gap-2">
                 <Tag className="size-3.5 text-muted" aria-hidden />

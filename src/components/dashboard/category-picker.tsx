@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
+import { AlertCircle, Check } from "lucide-react";
 
 import { useCategories } from "@/components/dashboard/category-context";
 import { toneByName } from "@/lib/event-colors";
@@ -34,6 +34,7 @@ export function CategoryPicker({
   const [selected, setSelected] = useState<string | null>(currentCategoryId);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -83,6 +84,7 @@ export function CategoryPicker({
 
   async function pick(categoryId: string | null) {
     setBusy(true);
+    setError(null);
     setSelected(categoryId);
     try {
       const res = await fetch("/api/events/category", {
@@ -90,16 +92,23 @@ export function CategoryPicker({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId, categoryId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed (${res.status})`);
+      }
       onChange?.(categoryId);
-      router.refresh();
+      // Slight delay before refresh — gives Google a beat to propagate the
+      // extendedProperties change so the next fetch sees the new value.
+      setTimeout(() => router.refresh(), 250);
+      closeMenu();
     } catch (err) {
       setSelected(currentCategoryId);
+      setError(err instanceof Error ? err.message : "Couldn't save");
       // eslint-disable-next-line no-console
       console.error("Set category failed:", err);
+      // Keep the menu open so the user sees the error message.
     } finally {
       setBusy(false);
-      closeMenu();
     }
   }
 
@@ -142,12 +151,22 @@ export function CategoryPicker({
             }}
             className="z-[80] max-h-[60vh] overflow-y-auto rounded-xl border border-rule bg-surface shadow-[0_20px_50px_-15px_rgba(26,22,18,0.4)]"
           >
+            {error && (
+              <div className="flex items-start gap-2 border-b border-rule bg-accent/10 px-3 py-2 text-[12px] text-accent">
+                <AlertCircle
+                  className="mt-0.5 size-3.5 shrink-0"
+                  strokeWidth={2}
+                />
+                <span className="flex-1 leading-tight">{error}</span>
+              </div>
+            )}
             <button
               type="button"
               role="option"
               aria-selected={selected === null}
               onClick={() => pick(null)}
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink-soft transition-colors duration-100 hover:bg-cream-deep/40"
+              disabled={busy}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink-soft transition-colors duration-100 hover:bg-cream-deep/40 disabled:opacity-60"
             >
               <span className="flex items-center gap-2">
                 <span
@@ -170,7 +189,8 @@ export function CategoryPicker({
                   role="option"
                   aria-selected={isActive}
                   onClick={() => pick(cat.id)}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink transition-colors duration-100 hover:bg-cream-deep/40"
+                  disabled={busy}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink transition-colors duration-100 hover:bg-cream-deep/40 disabled:opacity-60"
                 >
                   <span className="flex items-center gap-2">
                     <span

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import { auth } from "@/auth";
 
@@ -57,5 +58,6 @@ export async function POST(req: Request) {
   }
 
   const updated = await res.json();
+  revalidatePath("/dashboard");
   return NextResponse.json(updated);
 }
