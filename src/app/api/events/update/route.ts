@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/db/log";
 import { eventUpdatesSchema } from "@/lib/event-schema";
 import { localToUtcIso } from "@/lib/google-calendar";
 
@@ -71,5 +72,17 @@ export async function POST(req: Request) {
   }
 
   const updated = await res.json();
+
+  await logActivity(session.user?.id, "event.updated", {
+    google_event_id: body.eventId,
+    changed_fields: Object.keys(u).filter(
+      (k) => u[k as keyof typeof u] !== undefined,
+    ),
+    new_title: u.title ?? null,
+    new_start: u.start ?? null,
+    new_end: u.end ?? null,
+    tz,
+  });
+
   return NextResponse.json(updated);
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/db/log";
 import { eventSchema } from "@/lib/event-schema";
 import { localToUtcIso } from "@/lib/google-calendar";
 import { buildRRule } from "@/lib/recurrence";
@@ -76,5 +77,22 @@ export async function POST(req: Request) {
   }
 
   const created = await res.json();
+
+  await logActivity(session.user?.id, "event.created", {
+    source: "chat",
+    title: ev.title,
+    start: ev.start,
+    end: ev.end,
+    duration_minutes: Math.round(
+      (new Date(ev.end).getTime() - new Date(ev.start).getTime()) / 60000,
+    ),
+    has_location: Boolean(ev.location),
+    has_description: Boolean(ev.description),
+    has_recurrence: Boolean(ev.recurrence),
+    recurrence_frequency: ev.recurrence?.frequency,
+    google_event_id: typeof created?.id === "string" ? created.id : null,
+    tz,
+  });
+
   return NextResponse.json(created);
 }

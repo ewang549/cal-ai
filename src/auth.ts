@@ -53,6 +53,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.accessToken = token.accessToken as string | undefined;
       // Surface refresh errors so UI can prompt re-sign-in if needed.
       session.error = token.error as string | undefined;
+      // Expose the Google `sub` claim as a stable user id for logging /
+      // preference learning. `token.sub` is set automatically by Auth.js.
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
+      }
       return session;
     },
   },

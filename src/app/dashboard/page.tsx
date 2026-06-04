@@ -120,6 +120,19 @@ export default async function DashboardPage({
           )}
         </main>
 
+        {/* Persistent fine-print privacy disclosure. Subtle but always present. */}
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-1.5 sm:pb-2">
+          <div className="pointer-events-auto font-mono text-[9px] tracking-[0.18em] uppercase text-muted/60">
+            Usage logged to improve scheduling ·{" "}
+            <a
+              href="/privacy"
+              className="underline underline-offset-4 hover:text-ink"
+            >
+              Privacy
+            </a>
+          </div>
+        </div>
+
         <SearchPalette pool={searchPool} />
 
         <Suspense fallback={null}>

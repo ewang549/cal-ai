@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
+import { logActivity } from "@/lib/db/log";
 import { eventSchema } from "@/lib/event-schema";
 import { localToUtcIso } from "@/lib/google-calendar";
 import { buildRRule } from "@/lib/recurrence";
@@ -85,6 +86,15 @@ export async function POST(req: Request) {
       });
     }
   }
+
+  await logActivity(session.user?.id, "event.created", {
+    source: "chat.batch",
+    batch_size: validated.length,
+    created_count: created,
+    failed_count: errors.length,
+    titles: validated.map((e) => e.title).slice(0, 20),
+    tz,
+  });
 
   return NextResponse.json({
     created,

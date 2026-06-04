@@ -7,12 +7,17 @@
  */
 import "next-auth";
 import "next-auth/jwt";
+import type { DefaultSession } from "next-auth";
 
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
     /** Present when refreshing the access_token failed; UI should re-sign-in. */
     error?: string;
+    user: {
+      /** Google `sub` claim — stable per user, used as primary key for logging. */
+      id?: string;
+    } & DefaultSession["user"];
   }
 }
 

@@ -7,6 +7,7 @@ import {
   listEventsTool,
   planStudyBlocks,
 } from "@/lib/calendar-tools";
+import { logActivity } from "@/lib/db/log";
 import {
   eventSchema,
   eventUpdatesSchema,
@@ -62,6 +63,17 @@ export async function POST(req: Request) {
   const tz = body.timezone || "UTC";
   if (clientMessages.length === 0) {
     return NextResponse.json({ error: "No messages" }, { status: 400 });
+  }
+
+  // Log the new user turn (the last message in the array). This is the
+  // most valuable data for prompt-tuning + understanding what students ask.
+  const lastUserTurn = clientMessages[clientMessages.length - 1];
+  if (lastUserTurn?.role === "user" && lastUserTurn.text) {
+    await logActivity(session.user?.id, "chat.message", {
+      text: lastUserTurn.text,
+      turn_index: clientMessages.length,
+      tz,
+    });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
