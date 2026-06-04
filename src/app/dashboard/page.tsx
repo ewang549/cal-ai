@@ -7,10 +7,13 @@ import {
   DashboardView,
 } from "@/components/dashboard/dashboard-header";
 import { Assistant } from "@/components/dashboard/assistant";
+import { CategoryProvider } from "@/components/dashboard/category-context";
 import { DeadlineNudge } from "@/components/dashboard/deadline-nudge";
+import { EmptyDashboard } from "@/components/dashboard/empty-state";
 import { ErrorCard } from "@/components/dashboard/error-card";
 import { MonthView } from "@/components/dashboard/month-view";
 import { Nav } from "@/components/landing/nav";
+import { SearchPalette } from "@/components/dashboard/search-palette";
 import { WeekListView } from "@/components/dashboard/week-view";
 import { findAtRiskDeadlines } from "@/lib/calendar-tools";
 import {
@@ -58,52 +61,71 @@ export default async function DashboardPage({
     error = e instanceof Error ? e.message : "Couldn't reach Google Calendar.";
   }
 
-  // Independently fetch the next 72h to detect at-risk deadlines, regardless
-  // of which view the user is on. (View range might not include today.)
+  // Independently fetch the next 60 days for two purposes:
+  //   (a) the at-risk-deadline nudge (next 72h subset)
+  //   (b) the Cmd+K search palette pool
+  // One fetch, two uses.
+  let searchPool: CalEvent[] = [];
   let atRisk: ReturnType<typeof findAtRiskDeadlines> = [];
   if (!error) {
     try {
       const now = new Date();
-      const horizon = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-      const nearby = await fetchEventsForRange(
+      const horizon = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+      searchPool = await fetchEventsForRange(
         session.accessToken,
         now,
         horizon,
       );
-      atRisk = findAtRiskDeadlines(nearby, 72);
+      atRisk = findAtRiskDeadlines(searchPool, 72);
     } catch {
-      // best-effort; no banner if it fails
+      // best-effort; no banner / search if it fails
     }
   }
 
+  // Detect a fresh user (no events anywhere in the near future) to show
+  // the welcome card. Browsing an empty far-future month doesn't count.
+  const today = new Date();
+  const viewingCurrentPeriod =
+    view === "month"
+      ? anchor.getMonth() === today.getMonth() &&
+        anchor.getFullYear() === today.getFullYear()
+      : anchor.getTime() >= rangeStart.getTime() - 7 * 86400000 &&
+        anchor.getTime() <= rangeEnd.getTime() + 7 * 86400000;
+  const isFreshUser =
+    !error && viewingCurrentPeriod && searchPool.length === 0;
+
   return (
-    <div className="min-h-screen bg-cream text-ink">
-      <Nav />
-      <main className="mx-auto max-w-5xl px-6 pt-12 pb-40 sm:px-10 sm:pt-16">
-        <DashboardHeader
-          view={view}
-          anchor={anchor}
-          userName={session.user?.name ?? null}
-          eventCount={events.length}
-          error={error}
-        />
+    <CategoryProvider>
+      <div className="min-h-screen bg-cream text-ink">
+        <Nav />
+        <main className="mx-auto max-w-5xl px-6 pt-12 pb-40 sm:px-10 sm:pt-16">
+          <DashboardHeader
+            view={view}
+            anchor={anchor}
+            userName={session.user?.name ?? null}
+            eventCount={events.length}
+            error={error}
+          />
 
-        {!error && <DeadlineNudge deadlines={atRisk} />}
+          {!error && <DeadlineNudge deadlines={atRisk} />}
 
-        {error ? (
-          <ErrorCard error={error} />
-        ) : view === "month" ? (
-          <MonthView events={events} anchor={anchor} />
-        ) : (
-          <WeekListView events={events} error={null} anchor={anchor} />
-        )}
-      </main>
+          {error ? (
+            <ErrorCard error={error} />
+          ) : isFreshUser ? (
+            <EmptyDashboard userName={session.user?.name ?? null} />
+          ) : view === "month" ? (
+            <MonthView events={events} anchor={anchor} />
+          ) : (
+            <WeekListView events={events} error={null} anchor={anchor} />
+          )}
+        </main>
 
-      {/* Conversational assistant pinned to the bottom of the viewport.
-          Wrapped in Suspense because it reads URL search params (?prompt=…). */}
-      <Suspense fallback={null}>
-        <Assistant />
-      </Suspense>
-    </div>
+        <SearchPalette pool={searchPool} />
+
+        <Suspense fallback={null}>
+          <Assistant />
+        </Suspense>
+      </div>
+    </CategoryProvider>
   );
 }

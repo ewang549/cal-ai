@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useCategories } from "@/components/dashboard/category-context";
+import { CategoryPicker } from "@/components/dashboard/category-picker";
+import {
+  getEventCategoryId,
+  toneForEvent,
+  type EventTone,
+} from "@/lib/event-colors";
 import {
   CalEvent,
   addDays,
@@ -29,42 +36,6 @@ const dayLabelFmt = new Intl.DateTimeFormat("en-US", {
 
 const MAX_EVENTS_PER_CELL = 3;
 
-/** Deterministic palette pick — same event always renders in the same tone. */
-const CHIP_TONES = ["accent", "ink", "amber", "emerald"] as const;
-type ChipTone = (typeof CHIP_TONES)[number];
-
-function chipToneFor(id: string): ChipTone {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return CHIP_TONES[h % CHIP_TONES.length];
-}
-
-const TONE_CLASSES: Record<
-  ChipTone,
-  { dot: string; border: string; hover: string }
-> = {
-  accent: {
-    dot: "bg-accent",
-    border: "border-accent/25",
-    hover: "hover:border-accent/60 hover:bg-accent/[0.06]",
-  },
-  ink: {
-    dot: "bg-ink",
-    border: "border-ink/15",
-    hover: "hover:border-ink/40 hover:bg-ink/[0.04]",
-  },
-  amber: {
-    dot: "bg-amber-600",
-    border: "border-amber-600/25",
-    hover: "hover:border-amber-600/60 hover:bg-amber-600/[0.06]",
-  },
-  emerald: {
-    dot: "bg-emerald-600",
-    border: "border-emerald-600/25",
-    hover: "hover:border-emerald-600/60 hover:bg-emerald-600/[0.06]",
-  },
-};
-
 type PopoverState = {
   event: CalEvent;
   x: number;
@@ -79,6 +50,7 @@ export function MonthView({
   anchor: Date;
 }) {
   const router = useRouter();
+  const { categories, isVisible } = useCategories();
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -99,7 +71,13 @@ export function MonthView({
   const weekdayHeaders = Array.from({ length: 7 }, (_, i) =>
     addDays(gridStart, i),
   );
-  const eventsByDay = groupByDay(events);
+
+  // Apply the current category filter — events whose category is hidden
+  // are dropped before grouping by day.
+  const visibleEvents = events.filter((ev) =>
+    isVisible(getEventCategoryId(ev) ?? null),
+  );
+  const eventsByDay = groupByDay(visibleEvents);
 
   async function handleReschedule(eventId: string, targetDay: Date) {
     const event = events.find((e) => e.id === eventId);
@@ -385,7 +363,8 @@ function EventChip({
 }) {
   const start = getEventStart(event);
   const allDay = isAllDay(event);
-  const tone = TONE_CLASSES[chipToneFor(event.id)];
+  const { categories } = useCategories();
+  const tone: EventTone = toneForEvent(event, categories);
 
   return (
     <button
@@ -401,7 +380,7 @@ function EventChip({
       className={[
         "group/chip flex w-full items-center gap-1.5 overflow-hidden rounded-md border bg-cream/95 px-1.5 py-1 text-left text-[11px] transition-all duration-150",
         tone.border,
-        tone.hover,
+        tone.hoverBg,
         allDay ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         isDragging
           ? "scale-[0.98] opacity-40"
@@ -409,7 +388,7 @@ function EventChip({
       ].join(" ")}
       aria-label={`${event.summary ?? "Event"} — click for details`}
     >
-      <span className={`size-1.5 shrink-0 rounded-full ${tone.dot}`} />
+      <span className={`size-1.5 shrink-0 rounded-full ${tone.bar}`} />
       {!allDay && (
         <span className="shrink-0 font-mono text-[10px] text-muted group-hover/chip:text-ink-soft">
           {timeFmt.format(start)}
@@ -465,7 +444,8 @@ function EventPopover({
   const start = getEventStart(event);
   const end = getEventEnd(event);
   const allDay = isAllDay(event);
-  const tone = TONE_CLASSES[chipToneFor(event.id)];
+  const { categories } = useCategories();
+  const tone: EventTone = toneForEvent(event, categories);
 
   return (
     <div
@@ -488,7 +468,7 @@ function EventPopover({
       </div>
 
       <div className="flex items-stretch">
-        <div className={`w-1.5 ${tone.dot}`} />
+        <div className={`w-1.5 ${tone.bar}`} />
         <div className="flex flex-1 flex-col gap-2 px-4 py-3.5">
           <div className="font-display text-xl tracking-tight text-ink">
             {event.summary || "(no title)"}
@@ -506,6 +486,15 @@ function EventPopover({
               {event.description}
             </div>
           )}
+          <div className="mt-2 flex items-center gap-2">
+            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted">
+              Category
+            </span>
+            <CategoryPicker
+              eventId={event.id}
+              currentCategoryId={getEventCategoryId(event)}
+            />
+          </div>
         </div>
       </div>
 

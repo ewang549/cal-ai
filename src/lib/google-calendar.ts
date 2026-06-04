@@ -12,6 +12,12 @@ export type CalEvent = {
   start: { dateTime?: string; date?: string; timeZone?: string };
   end: { dateTime?: string; date?: string; timeZone?: string };
   htmlLink?: string;
+  /** Custom key-value storage Google Calendar exposes. We store the
+   *  category id as `extendedProperties.private.cal_ai_category`. */
+  extendedProperties?: {
+    private?: Record<string, string>;
+    shared?: Record<string, string>;
+  };
 };
 
 /* ─── date helpers ─── */

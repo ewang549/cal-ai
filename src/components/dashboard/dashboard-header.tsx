@@ -7,6 +7,8 @@ import {
   List,
 } from "lucide-react";
 
+import { CategoryFilter } from "@/components/dashboard/category-filter";
+import { SearchTrigger } from "@/components/dashboard/search-palette";
 import {
   addDays,
   addMonths,
@@ -75,13 +77,16 @@ export function DashboardHeader({
           <p className="mt-2 text-ink-soft">{subline}</p>
         </div>
 
-        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-stretch gap-2 sm:flex-row sm:items-center">
+          <SearchTrigger />
+          <CategoryFilter />
           <Link
             href="/dashboard/syllabus"
-            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-accent/40 bg-accent/[0.06] px-4 text-sm font-medium text-accent transition-colors duration-200 hover:bg-accent/[0.12]"
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-accent/40 bg-accent/[0.06] px-3.5 text-sm font-medium text-accent transition-colors duration-200 hover:bg-accent/[0.12]"
           >
             <BookOpen className="size-3.5" />
-            Import syllabus
+            <span className="hidden sm:inline">Import syllabus</span>
+            <span className="sm:hidden">Syllabus</span>
           </Link>
           <NavGroup
             view={view}
