@@ -260,7 +260,7 @@ export function SearchTrigger() {
           }),
         );
       }}
-      className="inline-flex h-10 items-center gap-1.5 rounded-full border border-rule bg-surface px-3.5 text-sm font-medium text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
+      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-rule bg-surface px-3 text-sm font-medium text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
     >
       <Search className="size-3.5" />
       <span className="hidden sm:inline">Search</span>

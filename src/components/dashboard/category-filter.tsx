@@ -54,7 +54,7 @@ export function CategoryFilter() {
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="true"
           aria-expanded={open}
-          className="inline-flex h-10 items-center gap-1.5 rounded-full border border-rule bg-surface px-3.5 text-sm font-medium text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
+          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-rule bg-surface px-3 text-sm font-medium text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
         >
           <Eye className="size-3.5" />
           <span className="hidden sm:inline">
@@ -158,7 +158,7 @@ export function CategoryFilter() {
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-left font-mono text-[11px] tracking-wider uppercase text-ink-soft transition-colors duration-150 hover:bg-cream-deep/40 hover:text-ink"
               >
                 <Settings2 className="size-3.5" />
-                Manage categories
+                Manage &amp; reset categories
               </button>
             </div>
           </div>

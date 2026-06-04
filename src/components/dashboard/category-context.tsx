@@ -14,6 +14,7 @@ import {
   DEFAULT_CATEGORIES,
   loadCategories,
   newCategoryId,
+  resetCategoriesToDefaults,
   saveCategories,
 } from "@/lib/categories";
 
@@ -41,6 +42,8 @@ type CategoryContextValue = {
   updateCategory: (id: string, patch: Partial<Omit<Category, "id">>) => void;
   /** Remove a category by id. */
   deleteCategory: (id: string) => void;
+  /** Restore the default Class / Project / Personal / Misc set. */
+  resetToDefaults: () => void;
   /** Whether an event with the given (possibly null) category id is currently visible. */
   isVisible: (categoryId: string | null) => boolean;
 };
@@ -97,6 +100,12 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const resetToDefaults = useCallback(() => {
+    const defaults = resetCategoriesToDefaults();
+    setCategories(defaults);
+    setHidden(new Set());
+  }, []);
+
   const isVisible = useCallback(
     (categoryId: string | null) => {
       // "Uncategorized" events use the special id "__uncategorized__" in the
@@ -116,6 +125,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       addCategory,
       updateCategory,
       deleteCategory,
+      resetToDefaults,
       isVisible,
     }),
     [
@@ -126,6 +136,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       addCategory,
       updateCategory,
       deleteCategory,
+      resetToDefaults,
       isVisible,
     ],
   );

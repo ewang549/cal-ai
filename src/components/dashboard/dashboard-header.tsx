@@ -29,6 +29,14 @@ const rangeFmt = new Intl.DateTimeFormat("en-US", {
 
 export type DashboardView = "list" | "month";
 
+/**
+ * Dashboard header — two-row layout:
+ *   1. Eyebrow + big title + subline (subline drops to its own row on narrow
+ *      screens via flex-wrap so the title never has to wrap mid-word).
+ *   2. Toolbar with logical grouping: nav + view toggle on the left,
+ *      utility actions (search, filter, syllabus) on the right, separated
+ *      by a thin rule so the eye reads them as distinct clusters.
+ */
 export function DashboardHeader({
   view,
   anchor,
@@ -44,7 +52,6 @@ export function DashboardHeader({
 }) {
   const title =
     view === "month" ? formatMonth(anchor) : formatWeekRange(anchor);
-
   const prevAnchor =
     view === "month" ? addMonths(anchor, -1) : addDays(anchor, -7);
   const nextAnchor =
@@ -69,25 +76,20 @@ export function DashboardHeader({
         {userName ? `Hi, ${userName.split(" ")[0]} —` : "Your calendar"}
       </div>
 
-      <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="font-display text-5xl tracking-tight text-ink sm:text-6xl">
-            {title}
-          </h1>
-          <p className="mt-2 text-ink-soft">{subline}</p>
-        </div>
+      {/* TITLE ROW */}
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <h1 className="font-display whitespace-nowrap text-5xl tracking-tight text-ink sm:text-6xl">
+          {title}
+        </h1>
+        <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-muted">
+          {subline}
+        </p>
+      </div>
 
-        <div className="flex flex-wrap items-stretch gap-2 sm:flex-row sm:items-center">
-          <SearchTrigger />
-          <CategoryFilter />
-          <Link
-            href="/dashboard/syllabus"
-            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-accent/40 bg-accent/[0.06] px-3.5 text-sm font-medium text-accent transition-colors duration-200 hover:bg-accent/[0.12]"
-          >
-            <BookOpen className="size-3.5" />
-            <span className="hidden sm:inline">Import syllabus</span>
-            <span className="sm:hidden">Syllabus</span>
-          </Link>
+      {/* TOOLBAR */}
+      <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-3 border-t border-rule/40 pt-4">
+        {/* LEFT CLUSTER — calendar navigation */}
+        <div className="flex flex-wrap items-center gap-2">
           <NavGroup
             view={view}
             prev={prevAnchor}
@@ -96,10 +98,26 @@ export function DashboardHeader({
           />
           <ViewToggle view={view} anchor={anchor} />
         </div>
+
+        {/* RIGHT CLUSTER — utility actions */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <SearchTrigger />
+          <CategoryFilter />
+          <Link
+            href="/dashboard/syllabus"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-accent px-3.5 text-sm font-medium text-cream shadow-[0_4px_12px_-4px_rgba(200,75,26,0.5)] transition-colors duration-200 hover:bg-accent/90"
+          >
+            <BookOpen className="size-3.5" />
+            <span className="hidden sm:inline">Import syllabus</span>
+            <span className="sm:hidden">Syllabus</span>
+          </Link>
+        </div>
       </div>
     </header>
   );
 }
+
+/* ─── toolbar pieces ─── */
 
 function NavGroup({
   view,
@@ -112,28 +130,26 @@ function NavGroup({
   next: Date;
   isOnToday: boolean;
 }) {
-  const iconBtn =
-    "inline-flex size-10 items-center justify-center rounded-full border border-rule bg-surface text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink";
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="inline-flex items-center gap-0.5 rounded-full border border-rule bg-surface p-1">
       <Link
         href={`/dashboard?view=${view}&anchor=${toAnchorString(prev)}`}
         aria-label="Previous"
-        className={iconBtn}
+        className="inline-flex size-7 items-center justify-center rounded-full text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
       >
         <ChevronLeft className="size-4" />
       </Link>
       {isOnToday ? (
         <span
           aria-disabled
-          className="inline-flex h-10 select-none items-center rounded-full border border-rule/60 bg-surface/50 px-4 text-sm font-medium text-muted"
+          className="inline-flex h-7 select-none items-center rounded-full px-3 text-sm font-medium text-muted"
         >
           Today
         </span>
       ) : (
         <Link
           href={`/dashboard?view=${view}`}
-          className="inline-flex h-10 items-center rounded-full border border-rule bg-surface px-4 text-sm font-medium text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
+          className="inline-flex h-7 items-center rounded-full px-3 text-sm font-medium text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
         >
           Today
         </Link>
@@ -141,7 +157,7 @@ function NavGroup({
       <Link
         href={`/dashboard?view=${view}&anchor=${toAnchorString(next)}`}
         aria-label="Next"
-        className={iconBtn}
+        className="inline-flex size-7 items-center justify-center rounded-full text-ink-soft transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
       >
         <ChevronRight className="size-4" />
       </Link>
@@ -185,8 +201,8 @@ function ToggleButton({
       href={href}
       className={
         active
-          ? "inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-1.5 text-sm font-medium text-cream shadow-[0_4px_12px_-4px_rgba(26,22,18,0.4)]"
-          : "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium text-ink-soft transition-colors duration-200 hover:text-ink"
+          ? "inline-flex items-center gap-1.5 rounded-full bg-ink px-3 py-1 text-sm font-medium text-cream shadow-[0_4px_12px_-4px_rgba(26,22,18,0.4)]"
+          : "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-ink-soft transition-colors duration-200 hover:text-ink"
       }
     >
       {icon}

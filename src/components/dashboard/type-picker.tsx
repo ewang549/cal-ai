@@ -3,35 +3,51 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
+import {
+  BookOpen,
+  Calendar,
+  Check,
+  ClipboardCheck,
+  FileText,
+  GraduationCap,
+  Pencil,
+  Tag,
+  Users,
+} from "lucide-react";
 
-import { useCategories } from "@/components/dashboard/category-context";
-import { toneByName } from "@/lib/event-colors";
+import { EVENT_TYPES, type EventType } from "@/lib/event-types";
+
+const TYPE_ICONS: Record<EventType, React.ComponentType<{ className?: string }>> =
+  {
+    event: Calendar,
+    class: GraduationCap,
+    assignment: ClipboardCheck,
+    exam: FileText,
+    quiz: FileText,
+    project: Pencil,
+    study: BookOpen,
+    meeting: Users,
+    other: Tag,
+  };
 
 /**
- * Picker for assigning a category to an event.
- *
- * The dropdown is portaled into <body> so it escapes the parent popover's
- * `overflow-hidden` (which would otherwise clip it). Coordinates are
- * computed in document space (rect + scroll) so it stays anchored to the
- * trigger when the user scrolls.
+ * Picker for the event's "type" (assignment, exam, etc.).
+ * Same portal-based dropdown pattern as <CategoryPicker> so it escapes
+ * the popover's overflow-hidden clipping.
  */
-export function CategoryPicker({
+export function TypePicker({
   eventId,
-  currentCategoryId,
-  onChange,
+  currentType,
 }: {
   eventId: string;
-  currentCategoryId: string | null;
-  onChange?: (newCategoryId: string | null) => void;
+  currentType: EventType | null;
 }) {
-  const { categories } = useCategories();
   const router = useRouter();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState<string | null>(currentCategoryId);
+  const [selected, setSelected] = useState<EventType | null>(currentType);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -41,14 +57,11 @@ export function CategoryPicker({
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
     const menuWidth = 208;
-    // Anchor the menu's right edge to the button's right edge.
     let x = rect.right - menuWidth + window.scrollX;
     let y = rect.bottom + 4 + window.scrollY;
-    // Keep inside viewport horizontally.
     if (x < window.scrollX + 8) x = window.scrollX + 8;
-    // Flip above the trigger if not enough room below.
-    if (rect.bottom + 240 > window.innerHeight) {
-      y = rect.top - 240 - 4 + window.scrollY;
+    if (rect.bottom + 360 > window.innerHeight) {
+      y = rect.top - 360 - 4 + window.scrollY;
     }
     setPos({ x, y });
     setOpen(true);
@@ -81,31 +94,31 @@ export function CategoryPicker({
     };
   }, [open]);
 
-  async function pick(categoryId: string | null) {
+  async function pick(type: EventType | null) {
     setBusy(true);
-    setSelected(categoryId);
+    setSelected(type);
     try {
-      const res = await fetch("/api/events/category", {
+      const res = await fetch("/api/events/type", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId, categoryId }),
+        body: JSON.stringify({ eventId, type }),
       });
       if (!res.ok) throw new Error(await res.text());
-      onChange?.(categoryId);
       router.refresh();
     } catch (err) {
-      setSelected(currentCategoryId);
+      setSelected(currentType);
       // eslint-disable-next-line no-console
-      console.error("Set category failed:", err);
+      console.error("Set type failed:", err);
     } finally {
       setBusy(false);
       closeMenu();
     }
   }
 
-  const current = selected
-    ? categories.find((c) => c.id === selected)
-    : undefined;
+  const CurrentIcon = selected ? TYPE_ICONS[selected] : Tag;
+  const currentLabel = selected
+    ? EVENT_TYPES.find((t) => t.id === selected)?.label
+    : "No type";
 
   return (
     <>
@@ -118,13 +131,8 @@ export function CategoryPicker({
         aria-expanded={open}
         className="inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-soft transition-colors duration-150 hover:bg-cream-deep hover:text-ink disabled:opacity-60"
       >
-        <span
-          aria-hidden
-          className={`size-2 rounded-full ${
-            current ? (toneByName(current.tone)?.bar ?? "bg-muted") : "bg-muted"
-          }`}
-        />
-        {busy ? "Saving…" : current ? current.name : "No category"}
+        <CurrentIcon className="size-3 text-muted" aria-hidden />
+        {busy ? "Saving…" : currentLabel}
       </button>
 
       {open &&
@@ -150,34 +158,28 @@ export function CategoryPicker({
               className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink-soft transition-colors duration-100 hover:bg-cream-deep/40"
             >
               <span className="flex items-center gap-2">
-                <span
-                  aria-hidden
-                  className="size-2 rounded-full bg-muted"
-                />
-                No category
+                <Tag className="size-3.5 text-muted" aria-hidden />
+                No type
               </span>
               {selected === null && (
                 <Check className="size-3.5 text-accent" strokeWidth={2.5} />
               )}
             </button>
-            {categories.map((cat) => {
-              const tone = toneByName(cat.tone);
-              const isActive = selected === cat.id;
+            {EVENT_TYPES.map((t) => {
+              const Icon = TYPE_ICONS[t.id];
+              const isActive = selected === t.id;
               return (
                 <button
-                  key={cat.id}
+                  key={t.id}
                   type="button"
                   role="option"
                   aria-selected={isActive}
-                  onClick={() => pick(cat.id)}
+                  onClick={() => pick(t.id)}
                   className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-ink transition-colors duration-100 hover:bg-cream-deep/40"
                 >
                   <span className="flex items-center gap-2">
-                    <span
-                      aria-hidden
-                      className={`size-2 rounded-full ${tone?.bar ?? "bg-muted"}`}
-                    />
-                    {cat.name}
+                    <Icon className="size-3.5 text-ink-soft" aria-hidden />
+                    {t.label}
                   </span>
                   {isActive && (
                     <Check className="size-3.5 text-accent" strokeWidth={2.5} />

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Trash2, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { useCategories } from "@/components/dashboard/category-context";
-import { CategoryPicker } from "@/components/dashboard/category-picker";
+import {
+  EventPopover,
+  popoverAnchorFromClick,
+  type PopoverAnchor,
+} from "@/components/dashboard/event-popover";
 import {
   getEventCategoryId,
   toneForEvent,
@@ -28,18 +30,12 @@ const timeFmt = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
 });
-const dayLabelFmt = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-});
 
 const MAX_EVENTS_PER_CELL = 3;
 
 type PopoverState = {
   event: CalEvent;
-  x: number;
-  y: number;
+  anchor: PopoverAnchor;
 };
 
 export function MonthView({
@@ -149,21 +145,7 @@ export function MonthView({
   function openPopover(e: React.MouseEvent, event: CalEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const popoverWidth = 320;
-    const popoverHeight = 220;
-    const margin = 8;
-    let x = rect.left;
-    let y = rect.bottom + 6;
-    if (typeof window !== "undefined") {
-      if (x + popoverWidth + margin > window.innerWidth) {
-        x = Math.max(margin, window.innerWidth - popoverWidth - margin);
-      }
-      if (y + popoverHeight + margin > window.innerHeight) {
-        y = Math.max(margin, rect.top - popoverHeight - 4);
-      }
-    }
-    setPopover({ event, x, y });
+    setPopover({ event, anchor: popoverAnchorFromClick(e) });
   }
 
   return (
@@ -227,8 +209,7 @@ export function MonthView({
       {popover && (
         <EventPopover
           event={popover.event}
-          x={popover.x}
-          y={popover.y}
+          anchor={popover.anchor}
           busy={busy}
           onClose={() => setPopover(null)}
           onDelete={() => handleDelete(popover.event.id)}
@@ -398,164 +379,6 @@ function EventChip({
         {event.summary || "(no title)"}
       </span>
     </button>
-  );
-}
-
-/* ─── event popover ─── */
-
-function EventPopover({
-  event,
-  x,
-  y,
-  busy,
-  onClose,
-  onDelete,
-}: {
-  event: CalEvent;
-  x: number;
-  y: number;
-  busy: boolean;
-  onClose: () => void;
-  onDelete: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    const id = setTimeout(() => {
-      document.addEventListener("mousedown", handleClick);
-      document.addEventListener("keydown", handleKey);
-    }, 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [onClose]);
-
-  const start = getEventStart(event);
-  const end = getEventEnd(event);
-  const allDay = isAllDay(event);
-  const { categories } = useCategories();
-  const tone: EventTone = toneForEvent(event, categories);
-
-  return (
-    <div
-      ref={ref}
-      style={{ left: `${x}px`, top: `${y}px` }}
-      className="fixed z-50 w-80 overflow-hidden rounded-2xl border border-rule bg-surface shadow-[0_30px_80px_-20px_rgba(26,22,18,0.45)] backdrop-blur-xl"
-    >
-      <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
-        <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-accent">
-          {dayLabelFmt.format(start)}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="flex size-6 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
-
-      <div className="flex items-stretch">
-        <div className={`w-1.5 ${tone.bar}`} />
-        <div className="flex flex-1 flex-col gap-2 px-4 py-3.5">
-          <div className="font-display text-xl tracking-tight text-ink">
-            {event.summary || "(no title)"}
-          </div>
-          <div className="font-mono text-xs text-ink-soft">
-            {allDay
-              ? "All day"
-              : `${timeFmt.format(start)} – ${end ? timeFmt.format(end) : "?"}`}
-          </div>
-          {event.location && (
-            <div className="text-sm text-ink-soft">📍 {event.location}</div>
-          )}
-          {event.description && (
-            <div className="line-clamp-3 text-sm leading-relaxed text-ink-soft">
-              {event.description}
-            </div>
-          )}
-          <div className="mt-2 flex items-center gap-2">
-            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted">
-              Category
-            </span>
-            <CategoryPicker
-              eventId={event.id}
-              currentCategoryId={getEventCategoryId(event)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {!confirmingDelete ? (
-        <div className="flex items-center gap-2 border-t border-rule bg-cream-deep/30 px-3 py-2.5">
-          {event.htmlLink && (
-            <a
-              href={event.htmlLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft transition-colors duration-200 hover:bg-cream"
-            >
-              <ExternalLink className="size-3.5" />
-              Open in Google
-            </a>
-          )}
-          <div className="ml-auto">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmingDelete(true)}
-              disabled={busy}
-            >
-              <Trash2 className="mr-1.5 size-3.5" strokeWidth={2.25} />
-              Delete
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between border-t border-rule bg-cream-deep/30 px-3 py-2.5">
-          <div className="text-xs text-ink-soft">Cancel this event?</div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmingDelete(false)}
-              disabled={busy}
-            >
-              Keep
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={onDelete}
-              disabled={busy}
-            >
-              {busy ? (
-                "Cancelling…"
-              ) : (
-                <>
-                  <Trash2 className="mr-1.5 size-3.5" strokeWidth={2.25} />
-                  Yes
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 

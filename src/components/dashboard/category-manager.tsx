@@ -17,6 +17,7 @@ export function CategoryManager({ onClose }: { onClose: () => void }) {
     addCategory,
     updateCategory,
     deleteCategory,
+    resetToDefaults,
   } = useCategories();
   const ref = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -202,14 +203,30 @@ export function CategoryManager({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         ) : (
-          <div className="border-t border-rule px-3 py-2">
+          <div className="flex items-center justify-between border-t border-rule px-3 py-2">
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[14px] font-medium text-ink-soft transition-colors duration-150 hover:bg-cream-deep/40 hover:text-ink"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-left text-[14px] font-medium text-ink-soft transition-colors duration-150 hover:bg-cream-deep/40 hover:text-ink"
             >
               <Plus className="size-3.5" />
               New category
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  typeof window !== "undefined" &&
+                  window.confirm(
+                    "Reset to the default categories (Class, Project, Personal, Misc)? Your custom categories will be removed.",
+                  )
+                ) {
+                  resetToDefaults();
+                }
+              }}
+              className="rounded-lg px-3 py-2 font-mono text-[11px] tracking-wider uppercase text-muted transition-colors duration-150 hover:bg-cream-deep/40 hover:text-ink"
+            >
+              Reset to defaults
             </button>
           </div>
         )}

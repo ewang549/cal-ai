@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Trash2, X } from "lucide-react";
 
 import { useCategories } from "@/components/dashboard/category-context";
-import { CategoryPicker } from "@/components/dashboard/category-picker";
-import { Button } from "@/components/ui/button";
+import {
+  EventPopover,
+  popoverAnchorFromClick,
+  type PopoverAnchor,
+} from "@/components/dashboard/event-popover";
 import {
   getEventCategoryId,
   toneForEvent,
-  type EventTone,
 } from "@/lib/event-colors";
+import { getEventType } from "@/lib/event-types";
 import {
   CalEvent,
   addDays,
@@ -22,9 +24,7 @@ import {
   startOfWeek,
 } from "@/lib/google-calendar";
 
-const dayHeaderFmt = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-});
+const dayHeaderFmt = new Intl.DateTimeFormat("en-US", { weekday: "long" });
 const dayDateFmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -36,8 +36,7 @@ const timeFmt = new Intl.DateTimeFormat("en-US", {
 
 type PopoverState = {
   event: CalEvent;
-  x: number;
-  y: number;
+  anchor: PopoverAnchor;
 };
 
 function groupByDay(events: CalEvent[]): Map<string, CalEvent[]> {
@@ -49,6 +48,19 @@ function groupByDay(events: CalEvent[]): Map<string, CalEvent[]> {
     map.set(key, list);
   }
   return map;
+}
+
+/**
+ * Should an event be shown in the list view? We hide events that already
+ * happened (cleaner schedule view), but keep showing past-due ASSIGNMENTS
+ * so students don't forget about them.
+ */
+function shouldShowInList(event: CalEvent, startOfToday: Date): boolean {
+  const eventStart = getEventStart(event);
+  if (eventStart >= startOfToday) return true; // future / today: always show
+  // Past event: only show if it's an assignment / project that's still open.
+  const t = getEventType(event);
+  return t === "assignment" || t === "project";
 }
 
 export function WeekListView({
@@ -67,28 +79,19 @@ export function WeekListView({
 
   if (error) return null; // dashboard page renders ErrorCard
 
-  const visibleEvents = events.filter((ev) =>
-    isVisible(getEventCategoryId(ev) ?? null),
-  );
+  // Calculate start of today once (in local time).
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const visibleEvents = events.filter((ev) => {
+    if (!isVisible(getEventCategoryId(ev) ?? null)) return false;
+    return shouldShowInList(ev, startOfToday);
+  });
 
   function openPopover(e: React.MouseEvent, event: CalEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const popoverWidth = 320;
-    const popoverHeight = 240;
-    const margin = 8;
-    let x = rect.left;
-    let y = rect.bottom + 6;
-    if (typeof window !== "undefined") {
-      if (x + popoverWidth + margin > window.innerWidth) {
-        x = Math.max(margin, window.innerWidth - popoverWidth - margin);
-      }
-      if (y + popoverHeight + margin > window.innerHeight) {
-        y = Math.max(margin, rect.top - popoverHeight - 4);
-      }
-    }
-    setPopover({ event, x, y });
+    setPopover({ event, anchor: popoverAnchorFromClick(e) });
   }
 
   async function handleDelete(eventId: string) {
@@ -118,14 +121,14 @@ export function WeekListView({
       <DayList
         eventsByDay={groupByDay(visibleEvents)}
         weekStart={startOfWeek(anchor)}
+        startOfToday={startOfToday}
         onEventClick={openPopover}
       />
 
       {popover && (
         <EventPopover
           event={popover.event}
-          x={popover.x}
-          y={popover.y}
+          anchor={popover.anchor}
           busy={busy}
           onClose={() => setPopover(null)}
           onDelete={() => handleDelete(popover.event.id)}
@@ -138,10 +141,12 @@ export function WeekListView({
 function DayList({
   eventsByDay,
   weekStart,
+  startOfToday,
   onEventClick,
 }: {
   eventsByDay: Map<string, CalEvent[]>;
   weekStart: Date;
+  startOfToday: Date;
   onEventClick: (e: React.MouseEvent, ev: CalEvent) => void;
 }) {
   const today = new Date();
@@ -154,11 +159,20 @@ function DayList({
       {days.map((day) => {
         const dayEvents = eventsByDay.get(day.toDateString()) ?? [];
         const isToday = isSameDay(day, today);
+        const isPast = day < startOfToday && !isToday;
         const isEmpty = dayEvents.length === 0;
+
+        // Skip rendering past days that have nothing overdue.
+        if (isPast && isEmpty) return null;
 
         return (
           <section key={day.toISOString()}>
-            <DayHeader day={day} isToday={isToday} count={dayEvents.length} />
+            <DayHeader
+              day={day}
+              isToday={isToday}
+              isPast={isPast}
+              count={dayEvents.length}
+            />
             {isEmpty ? (
               <div className="mt-3 rounded-xl border border-dashed border-rule/60 bg-cream/40 px-4 py-4 text-center font-mono text-[11px] tracking-wider uppercase text-muted/70">
                 No events
@@ -169,6 +183,7 @@ function DayList({
                   <EventRow
                     key={ev.id}
                     event={ev}
+                    isPast={isPast}
                     onClick={(e) => onEventClick(e, ev)}
                   />
                 ))}
@@ -184,10 +199,12 @@ function DayList({
 function DayHeader({
   day,
   isToday,
+  isPast,
   count,
 }: {
   day: Date;
   isToday: boolean;
+  isPast: boolean;
   count: number;
 }) {
   return (
@@ -195,7 +212,7 @@ function DayHeader({
       <div className="flex items-baseline gap-3">
         <h3
           className={`font-display text-2xl italic tracking-tight ${
-            isToday ? "text-accent" : "text-ink"
+            isToday ? "text-accent" : isPast ? "text-muted" : "text-ink"
           }`}
         >
           {dayHeaderFmt.format(day)}
@@ -206,6 +223,11 @@ function DayHeader({
         {isToday && (
           <span className="rounded-full bg-accent px-2 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase text-cream">
             Today
+          </span>
+        )}
+        {isPast && (
+          <span className="rounded-full border border-rule px-2 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase text-muted">
+            Overdue
           </span>
         )}
       </div>
@@ -220,9 +242,11 @@ function DayHeader({
 
 function EventRow({
   event,
+  isPast,
   onClick,
 }: {
   event: CalEvent;
+  isPast: boolean;
   onClick: (e: React.MouseEvent) => void;
 }) {
   const { categories } = useCategories();
@@ -230,6 +254,7 @@ function EventRow({
   const end = getEventEnd(event);
   const allDay = isAllDay(event);
   const tone = toneForEvent(event, categories);
+  const type = getEventType(event);
 
   return (
     <li>
@@ -257,8 +282,20 @@ function EventRow({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-medium text-ink">
-              {event.summary || "(no title)"}
+            <div className="flex items-center gap-2">
+              <span className="truncate text-[15px] font-medium text-ink">
+                {event.summary || "(no title)"}
+              </span>
+              {isPast && (
+                <span className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase text-accent">
+                  Overdue
+                </span>
+              )}
+              {type && type !== "event" && !isPast && (
+                <span className="shrink-0 rounded-full border border-rule px-1.5 py-0.5 font-mono text-[9px] tracking-[0.18em] uppercase text-muted">
+                  {type}
+                </span>
+              )}
             </div>
             {event.location && (
               <div className="mt-0.5 truncate font-mono text-[11px] text-muted">
@@ -269,164 +306,5 @@ function EventRow({
         </div>
       </button>
     </li>
-  );
-}
-
-/* ─── event detail popover (same look as month-view's) ─── */
-
-const dayLabelFmt = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-});
-
-function EventPopover({
-  event,
-  x,
-  y,
-  busy,
-  onClose,
-  onDelete,
-}: {
-  event: CalEvent;
-  x: number;
-  y: number;
-  busy: boolean;
-  onClose: () => void;
-  onDelete: () => void;
-}) {
-  const { categories } = useCategories();
-  const ref = useRef<HTMLDivElement>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    const id = setTimeout(() => {
-      document.addEventListener("mousedown", handleClick);
-      document.addEventListener("keydown", handleKey);
-    }, 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [onClose]);
-
-  const start = getEventStart(event);
-  const end = getEventEnd(event);
-  const allDay = isAllDay(event);
-  const tone: EventTone = toneForEvent(event, categories);
-
-  return (
-    <div
-      ref={ref}
-      style={{ left: `${x}px`, top: `${y}px` }}
-      className="fixed z-50 w-80 overflow-hidden rounded-2xl border border-rule bg-surface shadow-[0_30px_80px_-20px_rgba(26,22,18,0.45)] backdrop-blur-xl"
-    >
-      <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
-        <div className="font-mono text-[10px] tracking-[0.22em] uppercase text-accent">
-          {dayLabelFmt.format(start)}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="flex size-6 items-center justify-center rounded-full text-muted transition-colors duration-200 hover:bg-cream-deep hover:text-ink"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
-
-      <div className="flex items-stretch">
-        <div className={`w-1.5 ${tone.bar}`} />
-        <div className="flex flex-1 flex-col gap-2 px-4 py-3.5">
-          <div className="font-display text-xl tracking-tight text-ink">
-            {event.summary || "(no title)"}
-          </div>
-          <div className="font-mono text-xs text-ink-soft">
-            {allDay
-              ? "All day"
-              : `${timeFmt.format(start)} – ${end ? timeFmt.format(end) : "?"}`}
-          </div>
-          {event.location && (
-            <div className="text-sm text-ink-soft">📍 {event.location}</div>
-          )}
-          {event.description && (
-            <div className="line-clamp-3 text-sm leading-relaxed text-ink-soft">
-              {event.description}
-            </div>
-          )}
-          <div className="mt-2 flex items-center gap-2">
-            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted">
-              Category
-            </span>
-            <CategoryPicker
-              eventId={event.id}
-              currentCategoryId={getEventCategoryId(event)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {!confirmingDelete ? (
-        <div className="flex items-center gap-2 border-t border-rule bg-cream-deep/30 px-3 py-2.5">
-          {event.htmlLink && (
-            <a
-              href={event.htmlLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-rule bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft transition-colors duration-200 hover:bg-cream"
-            >
-              <ExternalLink className="size-3.5" />
-              Open in Google
-            </a>
-          )}
-          <div className="ml-auto">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmingDelete(true)}
-              disabled={busy}
-            >
-              <Trash2 className="mr-1.5 size-3.5" strokeWidth={2.25} />
-              Delete
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between border-t border-rule bg-cream-deep/30 px-3 py-2.5">
-          <div className="text-xs text-ink-soft">Cancel this event?</div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmingDelete(false)}
-              disabled={busy}
-            >
-              Keep
-            </Button>
-            <Button type="button" size="sm" onClick={onDelete} disabled={busy}>
-              {busy ? (
-                "Cancelling…"
-              ) : (
-                <>
-                  <Trash2 className="mr-1.5 size-3.5" strokeWidth={2.25} />
-                  Yes
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }

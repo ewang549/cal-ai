@@ -29,7 +29,7 @@ export function loadCategories(): Category[] {
     if (!raw) return DEFAULT_CATEGORIES;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return DEFAULT_CATEGORIES;
-    return parsed
+    const filtered = parsed
       .filter(
         (c): c is Category =>
           typeof c === "object" &&
@@ -39,9 +39,38 @@ export function loadCategories(): Category[] {
           typeof c.tone === "string",
       )
       .slice(0, 20); // reasonable cap
+
+    if (filtered.length === 0) return DEFAULT_CATEGORIES;
+
+    // Self-heal: if persisted state is a strict subset of the defaults and
+    // is incomplete (e.g. legacy state with only "Class"), top it up with the
+    // missing defaults. Custom user categories aren't disturbed because they
+    // wouldn't match a default id.
+    const allMatchDefaults = filtered.every((c) =>
+      DEFAULT_CATEGORIES.some((d) => d.id === c.id),
+    );
+    if (allMatchDefaults && filtered.length < DEFAULT_CATEGORIES.length) {
+      const presentIds = new Set(filtered.map((c) => c.id));
+      const missing = DEFAULT_CATEGORIES.filter((d) => !presentIds.has(d.id));
+      return [...filtered, ...missing];
+    }
+
+    return filtered;
   } catch {
     return DEFAULT_CATEGORIES;
   }
+}
+
+/** Wipe persisted categories and return to the defaults. */
+export function resetCategoriesToDefaults(): Category[] {
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore — private mode or quota
+    }
+  }
+  return DEFAULT_CATEGORIES;
 }
 
 export function saveCategories(categories: Category[]): void {
