@@ -149,6 +149,7 @@ export function TypePicker({
           <div
             ref={menuRef}
             role="listbox"
+            data-picker-portal
             style={{
               position: "absolute",
               left: `${pos.x}px`,

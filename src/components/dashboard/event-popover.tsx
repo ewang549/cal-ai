@@ -101,11 +101,20 @@ export function EventPopover({
 
   // Close on outside click + Escape. Defer initial registration so the
   // very click that opened the popover doesn't immediately close it.
+  //
+  // Tricky bit: the Type / Category pickers inside the popover render
+  // their dropdowns via React portal (so they can escape this popover's
+  // `overflow-hidden`). That means a click inside one of those dropdowns
+  // lands OUTSIDE this `ref.current` node and would otherwise close the
+  // popover before the API call finished. We mark those portal menus with
+  // `data-picker-portal` and treat clicks inside them as "inside" us.
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (ref.current?.contains(target)) return;
+      if (target.closest?.("[data-picker-portal]")) return;
+      onClose();
     }
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
