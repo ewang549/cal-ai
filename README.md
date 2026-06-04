@@ -67,7 +67,7 @@ The existing AI calendar tools (Motion, Reclaim, Akiflow) are designed for worki
                                      └──────────────────┘
 ```
 
-## The interesting parts (interview material)
+## The interesting parts 
 
 ### 1. The LLM is treated as untrusted input
 
