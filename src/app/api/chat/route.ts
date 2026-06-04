@@ -11,6 +11,7 @@ import {
   eventSchema,
   eventUpdatesSchema,
 } from "@/lib/event-schema";
+import { RECURRENCE_TOOL_SCHEMA } from "@/lib/recurrence";
 import {
   CalEvent,
   fetchEventsForRange,
@@ -292,18 +293,20 @@ const ALL_TOOLS: Anthropic.Messages.Tool[] = [
   {
     name: "create_event",
     description:
-      "Propose creating a new event. The user will confirm in the UI before anything is written.",
+      "Propose creating a new event (one-time OR recurring). The user will confirm in the UI before anything is written. For recurring events ('every Mon/Wed/Fri', 'weekly meeting'), set the `recurrence` object — `start` is then the FIRST occurrence.",
     input_schema: {
       type: "object",
       properties: {
         title: { type: "string" },
         start: {
           type: "string",
-          description: "LOCAL ISO 8601 (YYYY-MM-DDTHH:MM:SS).",
+          description:
+            "LOCAL ISO 8601 (YYYY-MM-DDTHH:MM:SS). For recurring events, this is the first occurrence.",
         },
         end: { type: "string", description: "LOCAL ISO 8601." },
         location: { type: ["string", "null"] },
         description: { type: ["string", "null"] },
+        recurrence: RECURRENCE_TOOL_SCHEMA,
       },
       required: ["title", "start", "end"],
     },

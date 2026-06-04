@@ -6,6 +6,7 @@ import {
   eventSchema,
   eventUpdatesSchema,
 } from "@/lib/event-schema";
+import { RECURRENCE_TOOL_SCHEMA } from "@/lib/recurrence";
 import {
   CalEvent,
   fetchEventsForRange,
@@ -96,14 +97,15 @@ export async function POST(req: Request) {
         {
           name: "create_event",
           description:
-            "Use when the user wants to add a NEW event AND you have a clear title, a specific date, and a specific clock time.",
+            "Use when the user wants to add a NEW event (one-time OR recurring) AND you have a clear title, a specific date, and a specific clock time. For recurring patterns ('every Mon/Wed/Fri', 'weekly'), set the `recurrence` object — `start` is then the FIRST occurrence.",
           input_schema: {
             type: "object",
             properties: {
               title: { type: "string" },
               start: {
                 type: "string",
-                description: "LOCAL ISO 8601 (YYYY-MM-DDTHH:MM:SS) — no Z.",
+                description:
+                  "LOCAL ISO 8601 (YYYY-MM-DDTHH:MM:SS) — no Z. For recurring events this is the first occurrence.",
               },
               end: {
                 type: "string",
@@ -111,6 +113,7 @@ export async function POST(req: Request) {
               },
               location: { type: ["string", "null"] },
               description: { type: ["string", "null"] },
+              recurrence: RECURRENCE_TOOL_SCHEMA,
             },
             required: ["title", "start", "end"],
           },
@@ -188,7 +191,13 @@ RULES
 - For CREATE: never invent defaults — call ask_clarification when time OR date is ambiguous.
 - For UPDATE/DELETE: match the user's description to exactly one event in the list above. If multiple could match, call ask_clarification with options. If none match, call ask_clarification.
 - All datetimes you emit are LOCAL ISO 8601 (YYYY-MM-DDTHH:MM:SS, no trailing Z, no offset).
-- For update_event, ONLY include the fields that are actually changing in the "updates" object.`,
+- For update_event, ONLY include the fields that are actually changing in the "updates" object.
+
+RECURRING EVENTS:
+- If the user describes a pattern ("every Monday", "Tue/Thu at 10", "every weekday", "every 2 weeks on Wed", "weekly meeting"), set the \`recurrence\` object on create_event.
+- The \`start\` field is the FIRST occurrence — pick the next upcoming date that matches the pattern (e.g. "every Tuesday" + today is Saturday → start on the next Tuesday).
+- Set \`until\` when the user implied an end ("for the semester" → ~16 weeks out, "until finals" → typical exam week). Omit for indefinite.
+- A recurring event still needs a specific clock time — if the user gave a day but no time, ask_clarification.`,
       messages: [{ role: "user", content: text }],
     });
 

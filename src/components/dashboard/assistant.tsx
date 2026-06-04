@@ -19,6 +19,7 @@ import type {
   DeleteAction,
   UpdateAction,
 } from "@/lib/event-schema";
+import { formatRecurrence } from "@/lib/recurrence";
 
 /* ─── types ─── */
 
@@ -482,6 +483,7 @@ function BodyForAction({
             end={action.event.end}
             location={action.event.location ?? undefined}
             description={action.event.description ?? undefined}
+            recurrenceSummary={formatRecurrence(action.event.recurrence)}
           />
         )}
         {action.action === "create_many" && (
@@ -525,6 +527,7 @@ function EventBlock({
   location,
   description,
   muted = false,
+  recurrenceSummary,
 }: {
   title: string;
   start: string;
@@ -532,6 +535,7 @@ function EventBlock({
   location?: string;
   description?: string;
   muted?: boolean;
+  recurrenceSummary?: string | null;
 }) {
   const s = new Date(start);
   const e = new Date(end);
@@ -550,6 +554,11 @@ function EventBlock({
       <div className="font-mono text-xs text-ink-soft">
         {timeFmt.format(s)} – {timeFmt.format(e)}
       </div>
+      {recurrenceSummary && (
+        <div className="font-mono text-[11px] tracking-wider uppercase text-accent">
+          ↻ {recurrenceSummary}
+        </div>
+      )}
       {location && <div className="text-sm text-ink-soft">📍 {location}</div>}
       {description && (
         <div className="text-sm leading-relaxed text-ink-soft">

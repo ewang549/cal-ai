@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { syllabusSchema, type Meeting, type Deadline } from "@/lib/syllabus-schema";
 import { localToUtcIso } from "@/lib/google-calendar";
+import { buildRRule } from "@/lib/recurrence";
 
 /**
  * POST /api/syllabus/import
@@ -28,15 +29,6 @@ type ImportBody = {
   };
 };
 
-const DAY_TO_RRULE: Record<string, string> = {
-  Mon: "MO",
-  Tue: "TU",
-  Wed: "WE",
-  Thu: "TH",
-  Fri: "FR",
-  Sat: "SA",
-  Sun: "SU",
-};
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -144,15 +136,16 @@ async function createMeetingEvent(args: {
   const startUtc = localToUtcIso(startLocal, tz);
   const endUtc = localToUtcIso(endLocal, tz);
 
-  // RRULE: weekly, on the given days, until last meeting at 23:59 local (UTC).
-  const byday = meeting.days
-    .map((d) => DAY_TO_RRULE[d])
-    .filter(Boolean)
-    .join(",");
-  const untilLocal = `${meeting.lastMeeting}T23:59:59`;
-  const untilUtc = localToUtcIso(untilLocal, tz)
-    .replace(/[-:]/g, "")
-    .replace(/\.\d{3}/, "");
+  // Use the shared recurrence builder so syllabus imports and chat-created
+  // recurring events produce identical RRULE strings.
+  const rrule = buildRRule(
+    {
+      frequency: "weekly",
+      byDay: meeting.days,
+      until: meeting.lastMeeting,
+    },
+    tz,
+  );
 
   const body = {
     summary: title,
@@ -160,7 +153,7 @@ async function createMeetingEvent(args: {
     location: meeting.location ?? undefined,
     start: { dateTime: startUtc, timeZone: tz },
     end: { dateTime: endUtc, timeZone: tz },
-    recurrence: [`RRULE:FREQ=WEEKLY;BYDAY=${byday};UNTIL=${untilUtc}`],
+    recurrence: [rrule],
   };
 
   await postGoogle(accessToken, body);

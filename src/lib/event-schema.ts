@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { recurrenceSchema } from "@/lib/recurrence";
+
 /* ── shared building blocks ── */
 
 const LOCAL_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
@@ -18,6 +20,8 @@ export const eventSchema = z
     end: dtField,
     location: locField,
     description: descField,
+    /** Optional RRULE-style recurrence. Omitted for one-off events. */
+    recurrence: recurrenceSchema.optional().nullable(),
   })
   .refine(
     (e) => new Date(e.end).getTime() > new Date(e.start).getTime(),

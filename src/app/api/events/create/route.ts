@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { eventSchema } from "@/lib/event-schema";
 import { localToUtcIso } from "@/lib/google-calendar";
+import { buildRRule } from "@/lib/recurrence";
 
 /**
  * POST /api/events/create
@@ -43,6 +44,17 @@ export async function POST(req: Request) {
   const startUtc = localToUtcIso(ev.start, tz);
   const endUtc = localToUtcIso(ev.end, tz);
 
+  const payload: Record<string, unknown> = {
+    summary: ev.title,
+    location: ev.location ?? undefined,
+    description: ev.description ?? undefined,
+    start: { dateTime: startUtc, timeZone: tz },
+    end: { dateTime: endUtc, timeZone: tz },
+  };
+  if (ev.recurrence) {
+    payload.recurrence = [buildRRule(ev.recurrence, tz)];
+  }
+
   const res = await fetch(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
     {
@@ -51,13 +63,7 @@ export async function POST(req: Request) {
         Authorization: `Bearer ${session.accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        summary: ev.title,
-        location: ev.location ?? undefined,
-        description: ev.description ?? undefined,
-        start: { dateTime: startUtc, timeZone: tz },
-        end: { dateTime: endUtc, timeZone: tz },
-      }),
+      body: JSON.stringify(payload),
     },
   );
 
